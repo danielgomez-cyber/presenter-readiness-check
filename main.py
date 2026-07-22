@@ -146,7 +146,8 @@ HEADERS = [
     "Submission ID",
     "Presenter Name",
     "Email",
-    "Event or Role",
+    "Phone Number",
+    "Title",
     "Location",
     "Connection Type",
 
@@ -283,7 +284,12 @@ class ReadinessSubmission(BaseModel):
 
     email: EmailStr
 
-    event_or_role: str = Field(
+    phone_number: str = Field(
+        default="",
+        max_length=25,
+    )
+
+    presenter_title: str = Field(
         default="",
         max_length=200,
     )
@@ -416,7 +422,8 @@ class ReadinessSubmission(BaseModel):
 
     @field_validator(
         "presenter_name",
-        "event_or_role",
+        "phone_number",
+        "presenter_title",
         "location",
         "camera_device",
         "microphone_device",
@@ -1907,7 +1914,8 @@ def append_sheet_row(
         submission_id,
         payload.presenter_name,
         str(payload.email),
-        payload.event_or_role,
+        payload.phone_number,
+        payload.presenter_title,
         payload.location,
         payload.connection_type,
 
@@ -2565,8 +2573,12 @@ def trello_description(
             f"**Name:** {payload.presenter_name}",
             f"**Email:** {payload.email}",
             (
-                f"**Event or role:** "
-                f"{payload.event_or_role or 'Not supplied'}"
+                f"**Phone number:** "
+                f"{payload.phone_number or 'Not supplied'}"
+            ),
+            (
+                f"**Title:** "
+                f"{payload.presenter_title or 'Not supplied'}"
             ),
             (
                 f"**Location:** "
@@ -2730,8 +2742,8 @@ def create_trello_card(
         f"[{assessment['recommendation']}] "
         f"{payload.presenter_name}"
         + (
-            f" - {payload.event_or_role}"
-            if payload.event_or_role
+            f" - {payload.presenter_title}"
+            if payload.presenter_title
             else ""
         )
     )
