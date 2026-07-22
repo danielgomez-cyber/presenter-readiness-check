@@ -1,0 +1,2610 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>Presenter Readiness Check</title>
+
+  <style>
+    :root {
+      color-scheme: light;
+
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+      --ink: #172033;
+      --muted: #61708a;
+      --line: #dfe5ee;
+      --panel: #ffffff;
+      --page: #f4f7fb;
+      --accent: #2457d6;
+      --accent-dark: #173e9b;
+      --accent-soft: #edf3ff;
+      --success: #176b45;
+      --success-soft: #eaf8f1;
+      --warning: #8a5a08;
+      --warning-soft: #fff7e5;
+      --danger: #a02626;
+      --danger-soft: #fff0f0;
+      --neutral-soft: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 42px auto 60px;
+    }
+
+    .hero {
+      margin-bottom: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 6vw, 3.5rem);
+      line-height: 1;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1.35rem;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .hero p {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: clamp(20px, 4vw, 34px);
+      box-shadow: 0 18px 55px rgba(26, 42, 74, 0.08);
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 18px;
+      position: sticky;
+      top: 18px;
+    }
+
+    .section {
+      padding: 24px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .section:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .section-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .section-heading p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: grid;
+      gap: 7px;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid #bdc8d8;
+      border-radius: 11px;
+      padding: 12px 13px;
+      color: inherit;
+      background: #ffffff;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: 3px solid rgba(36, 87, 214, 0.16);
+      border-color: var(--accent);
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .consent {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+
+    .consent input {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      flex: 0 0 auto;
+    }
+
+    .primary-button,
+    .secondary-button {
+      border-radius: 12px;
+      padding: 13px 18px;
+      cursor: pointer;
+      font-weight: 800;
+      transition:
+        background 150ms ease,
+        border-color 150ms ease,
+        opacity 150ms ease;
+    }
+
+    .primary-button {
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .primary-button:hover {
+      background: var(--accent-dark);
+    }
+
+    .secondary-button {
+      color: var(--accent-dark);
+      background: #ffffff;
+      border: 1px solid #b9c7e4;
+    }
+
+    .secondary-button:hover {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .media-box {
+      overflow: hidden;
+      position: relative;
+      aspect-ratio: 16 / 9;
+      border: 1px solid #c7d0df;
+      border-radius: 16px;
+      background: #111827;
+    }
+
+    video,
+    .snapshot-preview {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    video {
+      display: block;
+      transform: scaleX(-1);
+    }
+
+    .snapshot-preview {
+      display: none;
+    }
+
+    .camera-placeholder {
+      display: grid;
+      position: absolute;
+      inset: 0;
+      place-items: center;
+      padding: 24px;
+      color: #d4dae6;
+      text-align: center;
+      background:
+        radial-gradient(circle at top, #26334b, #111827);
+    }
+
+    .media-badge {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      color: #ffffff;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(5px);
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .camera-details {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .detail-box {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--neutral-soft);
+    }
+
+    .detail-box span {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+
+    .detail-box strong {
+      font-size: 0.95rem;
+      word-break: break-word;
+    }
+
+    .meter-track {
+      height: 13px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5eaf2;
+    }
+
+    .meter-fill {
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 80ms linear;
+    }
+
+    .meter-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 0.76rem;
+    }
+
+    .test-state {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .state-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #9aa6b8;
+    }
+
+    .test-state.success {
+      color: var(--success);
+    }
+
+    .test-state.success .state-dot {
+      background: var(--success);
+    }
+
+    .test-state.warning {
+      color: var(--warning);
+    }
+
+    .test-state.warning .state-dot {
+      background: var(--warning);
+    }
+
+    .test-state.error {
+      color: var(--danger);
+    }
+
+    .test-state.error .state-dot {
+      background: var(--danger);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin: 20px 0;
+    }
+
+    .metric {
+      min-width: 0;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #f9fbfe;
+    }
+
+    .metric span {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.25rem;
+      overflow-wrap: anywhere;
+    }
+
+    .progress {
+      height: 9px;
+      overflow: hidden;
+      margin: 18px 0 10px;
+      border-radius: 999px;
+      background: #e4e9f2;
+    }
+
+    .progress div {
+      width: 0;
+      height: 100%;
+      background: var(--accent);
+      transition: width 300ms ease;
+    }
+
+    .status {
+      min-height: 1.5em;
+      margin: 10px 0 16px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .status.success {
+      color: var(--success);
+      font-weight: 700;
+    }
+
+    .status.error {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .status.warning {
+      color: var(--warning);
+      font-weight: 700;
+    }
+
+    .check-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .check-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 13px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--neutral-soft);
+    }
+
+    .check-item span:first-child {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .check-value {
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .check-value.pass {
+      color: var(--success);
+    }
+
+    .check-value.fail {
+      color: var(--danger);
+    }
+
+    .check-value.pending {
+      color: var(--muted);
+    }
+
+    .score-block {
+      display: grid;
+      place-items: center;
+      margin: 18px 0;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      text-align: center;
+      background: var(--neutral-soft);
+    }
+
+    .score-value {
+      font-size: 3rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .score-label {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .result-panel {
+      display: none;
+    }
+
+    .result-panel.visible {
+      display: block;
+    }
+
+    .result-banner {
+      padding: 16px;
+      border-radius: 14px;
+      line-height: 1.5;
+    }
+
+    .result-banner.ready {
+      color: var(--success);
+      background: var(--success-soft);
+      border: 1px solid #b8e2cb;
+    }
+
+    .result-banner.review {
+      color: var(--warning);
+      background: var(--warning-soft);
+      border: 1px solid #ead39c;
+    }
+
+    .result-banner h3 {
+      margin-bottom: 5px;
+      font-size: 1.1rem;
+    }
+
+    .result-banner p {
+      margin: 0;
+    }
+
+    .recommendations {
+      margin: 16px 0 0;
+      padding-left: 20px;
+      color: var(--ink);
+      line-height: 1.55;
+    }
+
+    .fine-print {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .privacy-note {
+      padding: 13px 14px;
+      border-radius: 12px;
+      color: var(--muted);
+      background: var(--neutral-soft);
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+
+    .honeypot {
+      position: absolute;
+      left: -10000px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+
+    a {
+      color: var(--accent);
+    }
+
+    canvas {
+      display: none;
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+      }
+    }
+
+    @media (max-width: 680px) {
+      main {
+        margin: 24px auto 40px;
+      }
+
+      .grid,
+      .metrics,
+      .camera-details {
+        grid-template-columns: 1fr;
+      }
+
+      .section-heading {
+        display: block;
+      }
+
+      .button-row {
+        display: grid;
+      }
+
+      .button-row button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Lawline presenter setup</p>
+
+      <h1>Presenter readiness check</h1>
+
+      <p>
+        Check your camera, microphone, speakers, visual setup, and Internet
+        connection from the same location you plan to use for your presentation.
+      </p>
+    </section>
+
+    <div class="layout">
+      <section class="card">
+        <form id="presenter-form">
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>Presenter information</h2>
+
+                <p>
+                  Enter the information that should accompany the readiness
+                  report.
+                </p>
+              </div>
+            </div>
+
+            <div class="grid">
+              <label>
+                Presenter name
+
+                <input
+                  name="presenter_name"
+                  autocomplete="name"
+                  minlength="2"
+                  maxlength="120"
+                  required
+                >
+              </label>
+
+              <label>
+                Email
+
+                <input
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  maxlength="254"
+                  required
+                >
+              </label>
+
+              <label>
+                Event or proposed role
+
+                <input
+                  name="event_or_role"
+                  maxlength="200"
+                >
+              </label>
+
+              <label>
+                Location
+
+                <input
+                  name="location"
+                  maxlength="200"
+                  placeholder="City, state, or venue"
+                >
+              </label>
+
+              <label>
+                Connection being tested
+
+                <select name="connection_type" required>
+                  <option value="">Select one</option>
+                  <option>Ethernet</option>
+                  <option>Wi-Fi</option>
+                  <option>Hotspot</option>
+                  <option>Other</option>
+                </select>
+              </label>
+
+              <label>
+                Notes
+
+                <textarea
+                  name="notes"
+                  maxlength="2000"
+                  placeholder="Optional details about the setup"
+                ></textarea>
+              </label>
+
+              <label class="honeypot" aria-hidden="true">
+                Website
+
+                <input
+                  name="website"
+                  tabindex="-1"
+                  autocomplete="off"
+                >
+              </label>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>Camera and visual setup</h2>
+
+                <p>
+                  Start the camera, select the camera you plan to use, and
+                  capture a readiness snapshot.
+                </p>
+              </div>
+            </div>
+
+            <div class="media-box">
+              <video
+                id="camera-preview"
+                autoplay
+                muted
+                playsinline
+              ></video>
+
+              <img
+                id="snapshot-preview"
+                class="snapshot-preview"
+                alt="Captured presenter snapshot"
+              >
+
+              <div
+                id="camera-placeholder"
+                class="camera-placeholder"
+              >
+                Camera preview will appear here.
+              </div>
+
+              <div
+                id="camera-badge"
+                class="media-badge"
+              >
+                Camera inactive
+              </div>
+            </div>
+
+            <canvas id="snapshot-canvas"></canvas>
+
+            <div class="camera-details">
+              <div class="detail-box">
+                <span>Resolution</span>
+                <strong id="camera-resolution">Not detected</strong>
+              </div>
+
+              <div class="detail-box">
+                <span>Frame rate</span>
+                <strong id="camera-fps">Not detected</strong>
+              </div>
+
+              <div class="detail-box">
+                <span>Snapshot</span>
+                <strong id="snapshot-state">Not captured</strong>
+              </div>
+            </div>
+
+            <div class="grid" style="margin-top: 18px;">
+              <label class="full">
+                Camera
+
+                <select id="camera-select">
+                  <option value="">Start the camera to view devices</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="button-row" style="margin-top: 16px;">
+              <button
+                id="start-camera-button"
+                class="secondary-button"
+                type="button"
+              >
+                Start camera
+              </button>
+
+              <button
+                id="capture-button"
+                class="secondary-button"
+                type="button"
+                disabled
+              >
+                Capture snapshot
+              </button>
+
+              <button
+                id="retake-button"
+                class="secondary-button"
+                type="button"
+                disabled
+              >
+                Retake snapshot
+              </button>
+            </div>
+
+            <div
+              id="camera-state"
+              class="test-state"
+            >
+              <span class="state-dot"></span>
+              <span>Camera has not been tested.</span>
+            </div>
+
+            <p class="fine-print">
+              The snapshot is analyzed for lighting, sharpness, framing, face
+              position, and background quality. It may also be attached to the
+              internal readiness report.
+            </p>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>Microphone</h2>
+
+                <p>
+                  Select the microphone you plan to use and speak normally for
+                  several seconds.
+                </p>
+              </div>
+            </div>
+
+            <div class="grid">
+              <label class="full">
+                Microphone
+
+                <select id="microphone-select">
+                  <option value="">
+                    Start the microphone to view devices
+                  </option>
+                </select>
+              </label>
+            </div>
+
+            <div style="margin-top: 17px;">
+              <div class="meter-track" aria-hidden="true">
+                <div
+                  id="microphone-meter"
+                  class="meter-fill"
+                ></div>
+              </div>
+
+              <div class="meter-labels">
+                <span>Quiet</span>
+                <span>Good level</span>
+                <span>Loud</span>
+              </div>
+            </div>
+
+            <div class="button-row" style="margin-top: 16px;">
+              <button
+                id="start-microphone-button"
+                class="secondary-button"
+                type="button"
+              >
+                Start microphone
+              </button>
+            </div>
+
+            <div
+              id="microphone-state"
+              class="test-state"
+            >
+              <span class="state-dot"></span>
+              <span>Microphone has not been tested.</span>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>Speakers</h2>
+
+                <p>
+                  Play the test sound and confirm that it is clearly audible.
+                </p>
+              </div>
+            </div>
+
+            <div class="button-row">
+              <button
+                id="speaker-test-button"
+                class="secondary-button"
+                type="button"
+              >
+                Play test sound
+              </button>
+
+              <button
+                id="speaker-confirm-button"
+                class="secondary-button"
+                type="button"
+                disabled
+              >
+                I heard the sound
+              </button>
+            </div>
+
+            <div
+              id="speaker-state"
+              class="test-state"
+            >
+              <span class="state-dot"></span>
+              <span>Speaker playback has not been confirmed.</span>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-heading">
+              <div>
+                <h2>Internet connection</h2>
+
+                <p>
+                  The speed test runs automatically after the hardware checks
+                  are complete.
+                </p>
+              </div>
+            </div>
+
+            <div class="metrics" aria-live="polite">
+              <div class="metric">
+                <span>Download</span>
+                <strong id="download">--</strong>
+              </div>
+
+              <div class="metric">
+                <span>Upload</span>
+                <strong id="upload">--</strong>
+              </div>
+
+              <div class="metric">
+                <span>Latency</span>
+                <strong id="latency">--</strong>
+              </div>
+
+              <div class="metric">
+                <span>Jitter</span>
+                <strong id="jitter">--</strong>
+              </div>
+            </div>
+
+            <div class="progress" aria-hidden="true">
+              <div id="progress-bar"></div>
+            </div>
+
+            <p id="status" class="status">
+              Complete the hardware checks, then run the readiness test.
+            </p>
+          </section>
+
+          <section class="section">
+            <label class="consent">
+              <input
+                name="consent"
+                type="checkbox"
+                required
+              >
+
+              <span>
+                I consent to the camera, microphone, speaker, and Internet
+                checks and to the result being recorded for presenter-readiness
+                review. The Internet test uses Cloudflare's browser speed-test
+                service.
+              </span>
+            </label>
+
+            <button
+              id="run-button"
+              class="primary-button"
+              type="submit"
+              style="margin-top: 20px;"
+            >
+              Run and record readiness check
+            </button>
+          </section>
+        </form>
+
+        <p class="privacy-note">
+          Camera and microphone access occur only after you approve browser
+          permission. Google and Trello credentials remain on the Python server
+          and are never placed in this webpage.
+        </p>
+      </section>
+
+      <aside class="sidebar">
+        <section class="card">
+          <h2>Check status</h2>
+
+          <div class="check-list">
+            <div class="check-item">
+              <span>Camera</span>
+
+              <span
+                id="summary-camera"
+                class="check-value pending"
+              >
+                Pending
+              </span>
+            </div>
+
+            <div class="check-item">
+              <span>Snapshot</span>
+
+              <span
+                id="summary-snapshot"
+                class="check-value pending"
+              >
+                Pending
+              </span>
+            </div>
+
+            <div class="check-item">
+              <span>Microphone</span>
+
+              <span
+                id="summary-microphone"
+                class="check-value pending"
+              >
+                Pending
+              </span>
+            </div>
+
+            <div class="check-item">
+              <span>Speakers</span>
+
+              <span
+                id="summary-speaker"
+                class="check-value pending"
+              >
+                Pending
+              </span>
+            </div>
+
+            <div class="check-item">
+              <span>Internet</span>
+
+              <span
+                id="summary-internet"
+                class="check-value pending"
+              >
+                Pending
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="result-panel"
+          class="card result-panel"
+        >
+          <h2>Readiness result</h2>
+
+          <div class="score-block">
+            <div
+              id="overall-score"
+              class="score-value"
+            >
+              --
+            </div>
+
+            <div
+              id="overall-grade"
+              class="score-label"
+            >
+              Awaiting result
+            </div>
+          </div>
+
+          <div
+            id="result-banner"
+            class="result-banner"
+          >
+            <h3 id="result-title">Result</h3>
+            <p id="result-detail"></p>
+          </div>
+
+          <ul
+            id="recommendation-list"
+            class="recommendations"
+          ></ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script type="module">
+    const CLOUDFLARE_SPEEDTEST_MODULE =
+      "https://cdn.jsdelivr.net/npm/@cloudflare/speedtest@1.11.0/dist/speedtest.js";
+
+    const form = document.querySelector("#presenter-form");
+    const runButton = document.querySelector("#run-button");
+
+    const statusElement = document.querySelector("#status");
+    const progressBar = document.querySelector("#progress-bar");
+
+    const cameraPreview = document.querySelector("#camera-preview");
+    const snapshotPreview = document.querySelector("#snapshot-preview");
+    const snapshotCanvas = document.querySelector("#snapshot-canvas");
+    const cameraPlaceholder = document.querySelector("#camera-placeholder");
+    const cameraBadge = document.querySelector("#camera-badge");
+
+    const cameraSelect = document.querySelector("#camera-select");
+    const microphoneSelect = document.querySelector("#microphone-select");
+
+    const startCameraButton = document.querySelector(
+      "#start-camera-button"
+    );
+
+    const captureButton = document.querySelector(
+      "#capture-button"
+    );
+
+    const retakeButton = document.querySelector(
+      "#retake-button"
+    );
+
+    const startMicrophoneButton = document.querySelector(
+      "#start-microphone-button"
+    );
+
+    const speakerTestButton = document.querySelector(
+      "#speaker-test-button"
+    );
+
+    const speakerConfirmButton = document.querySelector(
+      "#speaker-confirm-button"
+    );
+
+    const cameraStateElement = document.querySelector("#camera-state");
+
+    const microphoneStateElement = document.querySelector(
+      "#microphone-state"
+    );
+
+    const speakerStateElement = document.querySelector(
+      "#speaker-state"
+    );
+
+    const cameraResolutionElement = document.querySelector(
+      "#camera-resolution"
+    );
+
+    const cameraFpsElement = document.querySelector("#camera-fps");
+
+    const snapshotStateElement = document.querySelector(
+      "#snapshot-state"
+    );
+
+    const microphoneMeter = document.querySelector(
+      "#microphone-meter"
+    );
+
+    const summaryElements = {
+      camera: document.querySelector("#summary-camera"),
+      snapshot: document.querySelector("#summary-snapshot"),
+      microphone: document.querySelector("#summary-microphone"),
+      speaker: document.querySelector("#summary-speaker"),
+      internet: document.querySelector("#summary-internet"),
+    };
+
+    const metricElements = {
+      download: document.querySelector("#download"),
+      upload: document.querySelector("#upload"),
+      latency: document.querySelector("#latency"),
+      jitter: document.querySelector("#jitter"),
+    };
+
+    const resultPanel = document.querySelector("#result-panel");
+
+    const overallScoreElement = document.querySelector(
+      "#overall-score"
+    );
+
+    const overallGradeElement = document.querySelector(
+      "#overall-grade"
+    );
+
+    const resultBanner = document.querySelector("#result-banner");
+    const resultTitle = document.querySelector("#result-title");
+    const resultDetail = document.querySelector("#result-detail");
+
+    const recommendationList = document.querySelector(
+      "#recommendation-list"
+    );
+
+    let cameraStream = null;
+    let microphoneStream = null;
+
+    let audioContext = null;
+    let microphoneAnalyser = null;
+    let microphoneAnimationFrame = null;
+
+    let cameraPermission = "unknown";
+    let microphonePermission = "unknown";
+
+    let cameraDeviceName = "";
+    let microphoneDeviceName = "";
+
+    let cameraWidth = 0;
+    let cameraHeight = 0;
+    let cameraFps = 0;
+    let cameraVideoActive = false;
+
+    let microphoneSignalDetected = false;
+    let microphonePeakLevel = 0;
+
+    let speakerConfirmed = false;
+
+    let snapshotDataUrl = "";
+    let snapshotFilename = "";
+
+    function finiteNumber(value, fallback = 0) {
+      const converted = Number(value);
+
+      return Number.isFinite(converted)
+        ? converted
+        : fallback;
+    }
+
+    function setStatus(message, type = "") {
+      statusElement.className = `status ${type}`.trim();
+      statusElement.textContent = message;
+    }
+
+    function setTestState(element, message, type = "") {
+      element.className = `test-state ${type}`.trim();
+
+      const messageElement = element.querySelector("span:last-child");
+
+      if (messageElement) {
+        messageElement.textContent = message;
+      }
+    }
+
+    function updateSummary(name, text, type = "pending") {
+      const element = summaryElements[name];
+
+      element.textContent = text;
+      element.className = `check-value ${type}`;
+    }
+
+    function renderMetric(
+      element,
+      value,
+      unit,
+      digits = 1
+    ) {
+      element.textContent =
+        `${finiteNumber(value).toFixed(digits)} ${unit}`;
+    }
+
+    function stopStream(stream) {
+      if (!stream) {
+        return;
+      }
+
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+    }
+
+    function stopMicrophoneMeter() {
+      if (microphoneAnimationFrame) {
+        cancelAnimationFrame(microphoneAnimationFrame);
+        microphoneAnimationFrame = null;
+      }
+
+      microphoneMeter.style.width = "0%";
+    }
+
+    async function permissionState(name) {
+      if (!navigator.permissions?.query) {
+        return "unknown";
+      }
+
+      try {
+        const result = await navigator.permissions.query({
+          name,
+        });
+
+        return result.state || "unknown";
+      } catch {
+        return "unknown";
+      }
+    }
+
+    async function populateDeviceLists() {
+      if (!navigator.mediaDevices?.enumerateDevices) {
+        return;
+      }
+
+      const devices = await navigator.mediaDevices.enumerateDevices();
+
+      const cameras = devices.filter(
+        (device) => device.kind === "videoinput"
+      );
+
+      const microphones = devices.filter(
+        (device) => device.kind === "audioinput"
+      );
+
+      const selectedCamera = cameraSelect.value;
+      const selectedMicrophone = microphoneSelect.value;
+
+      cameraSelect.innerHTML = "";
+
+      for (const [index, device] of cameras.entries()) {
+        const option = document.createElement("option");
+
+        option.value = device.deviceId;
+        option.textContent =
+          device.label || `Camera ${index + 1}`;
+
+        cameraSelect.append(option);
+      }
+
+      microphoneSelect.innerHTML = "";
+
+      for (const [index, device] of microphones.entries()) {
+        const option = document.createElement("option");
+
+        option.value = device.deviceId;
+        option.textContent =
+          device.label || `Microphone ${index + 1}`;
+
+        microphoneSelect.append(option);
+      }
+
+      if (selectedCamera) {
+        cameraSelect.value = selectedCamera;
+      }
+
+      if (selectedMicrophone) {
+        microphoneSelect.value = selectedMicrophone;
+      }
+    }
+
+    async function startCamera(deviceId = "") {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        cameraPermission = "unavailable";
+
+        setTestState(
+          cameraStateElement,
+          "Camera access is not supported by this browser.",
+          "error"
+        );
+
+        updateSummary("camera", "Unavailable", "fail");
+        return;
+      }
+
+      stopStream(cameraStream);
+      cameraStream = null;
+
+      snapshotDataUrl = "";
+      snapshotFilename = "";
+
+      snapshotPreview.style.display = "none";
+      cameraPreview.style.display = "block";
+      snapshotStateElement.textContent = "Not captured";
+
+      captureButton.disabled = true;
+      retakeButton.disabled = true;
+
+      setTestState(
+        cameraStateElement,
+        "Requesting camera access..."
+      );
+
+      try {
+        const videoConstraint = deviceId
+          ? {
+              deviceId: {
+                exact: deviceId,
+              },
+              width: {
+                ideal: 1280,
+              },
+              height: {
+                ideal: 720,
+              },
+              frameRate: {
+                ideal: 30,
+              },
+            }
+          : {
+              width: {
+                ideal: 1280,
+              },
+              height: {
+                ideal: 720,
+              },
+              frameRate: {
+                ideal: 30,
+              },
+            };
+
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraint,
+          audio: false,
+        });
+
+        cameraPermission = "granted";
+
+        cameraPreview.srcObject = cameraStream;
+
+        await cameraPreview.play();
+
+        const videoTrack = cameraStream.getVideoTracks()[0];
+        const settings = videoTrack?.getSettings?.() || {};
+
+        cameraWidth = finiteNumber(
+          settings.width || cameraPreview.videoWidth
+        );
+
+        cameraHeight = finiteNumber(
+          settings.height || cameraPreview.videoHeight
+        );
+
+        cameraFps = finiteNumber(settings.frameRate);
+
+        cameraDeviceName = videoTrack?.label || "";
+
+        cameraVideoActive =
+          videoTrack?.readyState === "live"
+          && cameraPreview.videoWidth > 0;
+
+        cameraPlaceholder.style.display = "none";
+        cameraBadge.textContent = "Camera active";
+
+        cameraResolutionElement.textContent =
+          cameraWidth && cameraHeight
+            ? `${cameraWidth} × ${cameraHeight}`
+            : "Not detected";
+
+        cameraFpsElement.textContent =
+          cameraFps > 0
+            ? `${cameraFps.toFixed(1)} FPS`
+            : "Not detected";
+
+        captureButton.disabled = !cameraVideoActive;
+
+        setTestState(
+          cameraStateElement,
+          cameraVideoActive
+            ? "Camera is active. Capture a snapshot when ready."
+            : "The camera opened, but no active picture was detected.",
+          cameraVideoActive ? "success" : "warning"
+        );
+
+        updateSummary(
+          "camera",
+          cameraVideoActive ? "Passed" : "Review",
+          cameraVideoActive ? "pass" : "fail"
+        );
+
+        await populateDeviceLists();
+
+        if (settings.deviceId) {
+          cameraSelect.value = settings.deviceId;
+        }
+      } catch (error) {
+        cameraPermission = await permissionState("camera");
+
+        if (cameraPermission === "unknown") {
+          cameraPermission = "denied";
+        }
+
+        cameraWidth = 0;
+        cameraHeight = 0;
+        cameraFps = 0;
+        cameraVideoActive = false;
+        cameraDeviceName = "";
+
+        cameraPlaceholder.style.display = "grid";
+        cameraBadge.textContent = "Camera unavailable";
+
+        setTestState(
+          cameraStateElement,
+          error instanceof Error
+            ? `Camera could not start: ${error.message}`
+            : "Camera could not start.",
+          "error"
+        );
+
+        updateSummary("camera", "Failed", "fail");
+      }
+    }
+
+    function captureSnapshot() {
+      if (
+        !cameraStream
+        || !cameraPreview.videoWidth
+        || !cameraPreview.videoHeight
+      ) {
+        setTestState(
+          cameraStateElement,
+          "Start the camera before capturing a snapshot.",
+          "warning"
+        );
+
+        return;
+      }
+
+      const maximumWidth = 1280;
+      const sourceWidth = cameraPreview.videoWidth;
+      const sourceHeight = cameraPreview.videoHeight;
+
+      const scale = Math.min(
+        1,
+        maximumWidth / sourceWidth
+      );
+
+      snapshotCanvas.width = Math.max(
+        1,
+        Math.round(sourceWidth * scale)
+      );
+
+      snapshotCanvas.height = Math.max(
+        1,
+        Math.round(sourceHeight * scale)
+      );
+
+      const context = snapshotCanvas.getContext("2d");
+
+      context.save();
+
+      context.translate(
+        snapshotCanvas.width,
+        0
+      );
+
+      context.scale(-1, 1);
+
+      context.drawImage(
+        cameraPreview,
+        0,
+        0,
+        snapshotCanvas.width,
+        snapshotCanvas.height
+      );
+
+      context.restore();
+
+      snapshotDataUrl = snapshotCanvas.toDataURL(
+        "image/jpeg",
+        0.86
+      );
+
+      const timestamp = new Date()
+        .toISOString()
+        .replaceAll(":", "-")
+        .replaceAll(".", "-");
+
+      snapshotFilename =
+        `presenter-snapshot-${timestamp}.jpg`;
+
+      snapshotPreview.src = snapshotDataUrl;
+      snapshotPreview.style.display = "block";
+      cameraPreview.style.display = "none";
+
+      snapshotStateElement.textContent = "Captured";
+
+      captureButton.disabled = true;
+      retakeButton.disabled = false;
+
+      setTestState(
+        cameraStateElement,
+        "Snapshot captured and ready for visual analysis.",
+        "success"
+      );
+
+      updateSummary("snapshot", "Captured", "pass");
+    }
+
+    function retakeSnapshot() {
+      snapshotDataUrl = "";
+      snapshotFilename = "";
+
+      snapshotPreview.src = "";
+      snapshotPreview.style.display = "none";
+      cameraPreview.style.display = "block";
+
+      snapshotStateElement.textContent = "Not captured";
+
+      captureButton.disabled = !cameraVideoActive;
+      retakeButton.disabled = true;
+
+      setTestState(
+        cameraStateElement,
+        "Snapshot cleared. Capture a new snapshot when ready."
+      );
+
+      updateSummary("snapshot", "Pending", "pending");
+    }
+
+    async function startMicrophone(deviceId = "") {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        microphonePermission = "unavailable";
+
+        setTestState(
+          microphoneStateElement,
+          "Microphone access is not supported by this browser.",
+          "error"
+        );
+
+        updateSummary(
+          "microphone",
+          "Unavailable",
+          "fail"
+        );
+
+        return;
+      }
+
+      stopStream(microphoneStream);
+      stopMicrophoneMeter();
+
+      microphoneStream = null;
+      microphoneSignalDetected = false;
+      microphonePeakLevel = 0;
+
+      setTestState(
+        microphoneStateElement,
+        "Requesting microphone access..."
+      );
+
+      try {
+        const audioConstraint = deviceId
+          ? {
+              deviceId: {
+                exact: deviceId,
+              },
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            };
+
+        microphoneStream =
+          await navigator.mediaDevices.getUserMedia({
+            video: false,
+            audio: audioConstraint,
+          });
+
+        microphonePermission = "granted";
+
+        const audioTrack =
+          microphoneStream.getAudioTracks()[0];
+
+        microphoneDeviceName =
+          audioTrack?.label || "";
+
+        audioContext = new AudioContext();
+
+        const source =
+          audioContext.createMediaStreamSource(
+            microphoneStream
+          );
+
+        microphoneAnalyser =
+          audioContext.createAnalyser();
+
+        microphoneAnalyser.fftSize = 1024;
+        microphoneAnalyser.smoothingTimeConstant = 0.72;
+
+        source.connect(microphoneAnalyser);
+
+        const timeData = new Uint8Array(
+          microphoneAnalyser.fftSize
+        );
+
+        function measureMicrophone() {
+          microphoneAnalyser.getByteTimeDomainData(
+            timeData
+          );
+
+          let squareTotal = 0;
+          let absolutePeak = 0;
+
+          for (const sample of timeData) {
+            const normalized =
+              (sample - 128) / 128;
+
+            squareTotal += normalized * normalized;
+
+            absolutePeak = Math.max(
+              absolutePeak,
+              Math.abs(normalized)
+            );
+          }
+
+          const rms = Math.sqrt(
+            squareTotal / timeData.length
+          );
+
+          microphonePeakLevel = Math.max(
+            microphonePeakLevel,
+            absolutePeak
+          );
+
+          const visualLevel = Math.min(
+            100,
+            Math.max(
+              0,
+              rms * 450
+            )
+          );
+
+          microphoneMeter.style.width =
+            `${visualLevel}%`;
+
+          if (rms >= 0.018 || absolutePeak >= 0.08) {
+            microphoneSignalDetected = true;
+
+            setTestState(
+              microphoneStateElement,
+              "Microphone signal detected.",
+              "success"
+            );
+
+            updateSummary(
+              "microphone",
+              "Passed",
+              "pass"
+            );
+          } else if (!microphoneSignalDetected) {
+            setTestState(
+              microphoneStateElement,
+              "Microphone is active. Speak normally to test the level."
+            );
+
+            updateSummary(
+              "microphone",
+              "Listening",
+              "pending"
+            );
+          }
+
+          microphoneAnimationFrame =
+            requestAnimationFrame(
+              measureMicrophone
+            );
+        }
+
+        measureMicrophone();
+
+        await populateDeviceLists();
+
+        const settings =
+          audioTrack?.getSettings?.() || {};
+
+        if (settings.deviceId) {
+          microphoneSelect.value =
+            settings.deviceId;
+        }
+
+        startMicrophoneButton.textContent =
+          "Restart microphone";
+      } catch (error) {
+        microphonePermission =
+          await permissionState("microphone");
+
+        if (microphonePermission === "unknown") {
+          microphonePermission = "denied";
+        }
+
+        microphoneDeviceName = "";
+        microphoneSignalDetected = false;
+        microphonePeakLevel = 0;
+
+        setTestState(
+          microphoneStateElement,
+          error instanceof Error
+            ? `Microphone could not start: ${error.message}`
+            : "Microphone could not start.",
+          "error"
+        );
+
+        updateSummary(
+          "microphone",
+          "Failed",
+          "fail"
+        );
+      }
+    }
+
+    async function playSpeakerTest() {
+      speakerConfirmed = false;
+      speakerConfirmButton.disabled = true;
+
+      setTestState(
+        speakerStateElement,
+        "Playing the test sound..."
+      );
+
+      try {
+        const context = new AudioContext();
+        const masterGain = context.createGain();
+
+        masterGain.gain.setValueAtTime(
+          0.0001,
+          context.currentTime
+        );
+
+        masterGain.gain.exponentialRampToValueAtTime(
+          0.18,
+          context.currentTime + 0.04
+        );
+
+        masterGain.gain.setValueAtTime(
+          0.18,
+          context.currentTime + 0.65
+        );
+
+        masterGain.gain.exponentialRampToValueAtTime(
+          0.0001,
+          context.currentTime + 0.8
+        );
+
+        masterGain.connect(context.destination);
+
+        const frequencies = [
+          440,
+          554.37,
+          659.25,
+        ];
+
+        frequencies.forEach(
+          (frequency, index) => {
+            const oscillator =
+              context.createOscillator();
+
+            const gain =
+              context.createGain();
+
+            oscillator.type = "sine";
+            oscillator.frequency.value = frequency;
+
+            gain.gain.value = 0.22;
+
+            oscillator.connect(gain);
+            gain.connect(masterGain);
+
+            const start =
+              context.currentTime
+              + index * 0.17;
+
+            oscillator.start(start);
+            oscillator.stop(start + 0.3);
+          }
+        );
+
+        speakerConfirmButton.disabled = false;
+
+        setTestState(
+          speakerStateElement,
+          "Did you hear the test sound clearly?"
+        );
+
+        updateSummary(
+          "speaker",
+          "Confirm",
+          "pending"
+        );
+      } catch (error) {
+        setTestState(
+          speakerStateElement,
+          error instanceof Error
+            ? `The speaker test could not play: ${error.message}`
+            : "The speaker test could not play.",
+          "error"
+        );
+
+        updateSummary(
+          "speaker",
+          "Failed",
+          "fail"
+        );
+      }
+    }
+
+    function confirmSpeaker() {
+      speakerConfirmed = true;
+
+      setTestState(
+        speakerStateElement,
+        "Speaker playback confirmed.",
+        "success"
+      );
+
+      updateSummary(
+        "speaker",
+        "Passed",
+        "pass"
+      );
+
+      speakerConfirmButton.disabled = true;
+    }
+
+    function resetSpeedTestUi() {
+      progressBar.style.width = "2%";
+
+      metricElements.download.textContent = "--";
+      metricElements.upload.textContent = "--";
+      metricElements.latency.textContent = "--";
+      metricElements.jitter.textContent = "--";
+
+      updateSummary(
+        "internet",
+        "Testing",
+        "pending"
+      );
+    }
+
+    function validateReadinessInputs() {
+      const problems = [];
+
+      if (!cameraVideoActive) {
+        problems.push(
+          "start the camera"
+        );
+      }
+
+      if (!snapshotDataUrl) {
+        problems.push(
+          "capture a camera snapshot"
+        );
+      }
+
+      if (
+        microphonePermission !== "granted"
+        || !microphoneSignalDetected
+      ) {
+        problems.push(
+          "test the microphone and speak until a signal is detected"
+        );
+      }
+
+      if (!speakerConfirmed) {
+        problems.push(
+          "play and confirm the speaker test"
+        );
+      }
+
+      if (!problems.length) {
+        return true;
+      }
+
+      setStatus(
+        `Before running the readiness check, ${problems.join(", ")}.`,
+        "warning"
+      );
+
+      return false;
+    }
+
+    function buildPayload(result) {
+      const data = new FormData(form);
+
+      const connection =
+        navigator.connection
+        || navigator.mozConnection
+        || navigator.webkitConnection;
+
+      return {
+        presenter_name:
+          data.get("presenter_name"),
+
+        email:
+          data.get("email"),
+
+        event_or_role:
+          data.get("event_or_role"),
+
+        location:
+          data.get("location"),
+
+        connection_type:
+          data.get("connection_type"),
+
+        notes:
+          data.get("notes"),
+
+        consent:
+          data.get("consent") === "on",
+
+        website:
+          data.get("website"),
+
+        download_mbps:
+          finiteNumber(
+            result.getDownloadBandwidth()
+          ) / 1_000_000,
+
+        upload_mbps:
+          finiteNumber(
+            result.getUploadBandwidth()
+          ) / 1_000_000,
+
+        latency_ms:
+          finiteNumber(
+            result.getUnloadedLatency()
+          ),
+
+        jitter_ms:
+          finiteNumber(
+            result.getUnloadedJitter()
+          ),
+
+        test_duration_seconds:
+          finiteNumber(
+            result.getTotalDurationMs()
+          ) / 1000,
+
+        camera_permission:
+          cameraPermission,
+
+        camera_device:
+          cameraDeviceName,
+
+        camera_width:
+          Math.round(cameraWidth),
+
+        camera_height:
+          Math.round(cameraHeight),
+
+        camera_fps:
+          cameraFps,
+
+        camera_video_active:
+          cameraVideoActive,
+
+        microphone_permission:
+          microphonePermission,
+
+        microphone_device:
+          microphoneDeviceName,
+
+        microphone_signal_detected:
+          microphoneSignalDetected,
+
+        microphone_peak_level:
+          Math.min(
+            1,
+            Math.max(
+              0,
+              microphonePeakLevel
+            )
+          ),
+
+        speaker_confirmed:
+          speakerConfirmed,
+
+        snapshot_data_url:
+          snapshotDataUrl,
+
+        snapshot_filename:
+          snapshotFilename
+          || "presenter-snapshot.jpg",
+
+        timezone:
+          Intl.DateTimeFormat()
+            .resolvedOptions()
+            .timeZone || "",
+
+        user_agent:
+          navigator.userAgent || "",
+
+        effective_network_type:
+          connection?.effectiveType || "",
+
+        browser_downlink_mbps:
+          Number.isFinite(connection?.downlink)
+            ? connection.downlink
+            : null,
+      };
+    }
+
+    async function saveResult(result) {
+      setStatus(
+        "Connection test complete. Analyzing and saving the result..."
+      );
+
+      progressBar.style.width = "95%";
+
+      const payload = buildPayload(result);
+
+      renderMetric(
+        metricElements.download,
+        payload.download_mbps,
+        "Mbps"
+      );
+
+      renderMetric(
+        metricElements.upload,
+        payload.upload_mbps,
+        "Mbps"
+      );
+
+      renderMetric(
+        metricElements.latency,
+        payload.latency_ms,
+        "ms",
+        0
+      );
+
+      renderMetric(
+        metricElements.jitter,
+        payload.jitter_ms,
+        "ms",
+        0
+      );
+
+      const response = await fetch(
+        "/api/submissions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      let body;
+
+      try {
+        body = await response.json();
+      } catch {
+        body = {};
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          body.detail
+          || `The server returned HTTP ${response.status}`
+        );
+      }
+
+      progressBar.style.width = "100%";
+
+      updateSummary(
+        "internet",
+        body.checks?.internet
+          ? "Passed"
+          : "Review",
+        body.checks?.internet
+          ? "pass"
+          : "fail"
+      );
+
+      renderResult(body);
+
+      const recommendation =
+        body.recommendation || "Recorded";
+
+      setStatus(
+        `Saved successfully. Recommendation: ${recommendation}.`,
+        recommendation === "Ready"
+          ? "success"
+          : "warning"
+      );
+    }
+
+    function renderResult(body) {
+      resultPanel.classList.add("visible");
+
+      overallScoreElement.textContent =
+        Number.isFinite(
+          Number(body.overall_score)
+        )
+          ? Math.round(
+              Number(body.overall_score)
+            )
+          : "--";
+
+      overallGradeElement.textContent =
+        body.overall_grade
+          ? `Grade ${body.overall_grade}`
+          : "Score recorded";
+
+      const ready =
+        body.recommendation === "Ready";
+
+      resultBanner.className =
+        `result-banner ${ready ? "ready" : "review"}`;
+
+      resultTitle.textContent =
+        ready
+          ? "Ready"
+          : "Needs review";
+
+      resultDetail.textContent =
+        body.recommendation_detail
+        || "The readiness result was recorded.";
+
+      recommendationList.innerHTML = "";
+
+      const recommendations =
+        Array.isArray(body.fix_recommendations)
+          ? body.fix_recommendations
+          : [];
+
+      for (const recommendation of recommendations) {
+        const item =
+          document.createElement("li");
+
+        item.textContent =
+          recommendation;
+
+        recommendationList.append(item);
+      }
+
+      resultPanel.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+
+    async function runSpeedTest() {
+      resetSpeedTestUi();
+
+      setStatus(
+        "Loading the browser speed test..."
+      );
+
+      const module = await import(
+        CLOUDFLARE_SPEEDTEST_MODULE
+      );
+
+      const SpeedTest = module.default;
+
+      let resultChanges = 0;
+      let finished = false;
+
+      const test = new SpeedTest({
+        autoStart: false,
+        measureDownloadLoadedLatency: false,
+        measureUploadLoadedLatency: false,
+        measurements: [
+          {
+            type: "latency",
+            numPackets: 20,
+          },
+          {
+            type: "download",
+            bytes: 100000,
+            count: 5,
+            bypassMinDuration: true,
+          },
+          {
+            type: "download",
+            bytes: 1000000,
+            count: 5,
+          },
+          {
+            type: "upload",
+            bytes: 100000,
+            count: 5,
+          },
+          {
+            type: "upload",
+            bytes: 1000000,
+            count: 5,
+          },
+          {
+            type: "download",
+            bytes: 10000000,
+            count: 2,
+          },
+          {
+            type: "upload",
+            bytes: 10000000,
+            count: 2,
+          },
+          {
+            type: "download",
+            bytes: 25000000,
+            count: 1,
+          },
+          {
+            type: "upload",
+            bytes: 25000000,
+            count: 1,
+          },
+        ],
+      });
+
+      test.onResultsChange = () => {
+        resultChanges += 1;
+
+        progressBar.style.width =
+          `${Math.min(
+            88,
+            8 + resultChanges * 9
+          )}%`;
+
+        setStatus(
+          "Measuring the connection. Keep this tab open..."
+        );
+
+        const current = test.results;
+
+        const download =
+          current.getDownloadBandwidth();
+
+        const upload =
+          current.getUploadBandwidth();
+
+        const latency =
+          current.getUnloadedLatency();
+
+        const jitter =
+          current.getUnloadedJitter();
+
+        if (Number.isFinite(download)) {
+          renderMetric(
+            metricElements.download,
+            download / 1_000_000,
+            "Mbps"
+          );
+        }
+
+        if (Number.isFinite(upload)) {
+          renderMetric(
+            metricElements.upload,
+            upload / 1_000_000,
+            "Mbps"
+          );
+        }
+
+        if (Number.isFinite(latency)) {
+          renderMetric(
+            metricElements.latency,
+            latency,
+            "ms",
+            0
+          );
+        }
+
+        if (Number.isFinite(jitter)) {
+          renderMetric(
+            metricElements.jitter,
+            jitter,
+            "ms",
+            0
+          );
+        }
+      };
+
+      test.onError = (error) => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        setStatus(
+          `Speed test failed: ${String(error)}`,
+          "error"
+        );
+
+        updateSummary(
+          "internet",
+          "Failed",
+          "fail"
+        );
+
+        runButton.disabled = false;
+        runButton.textContent = "Try again";
+      };
+
+      test.onFinish = async (results) => {
+        if (finished) {
+          return;
+        }
+
+        finished = true;
+
+        try {
+          await saveResult(results);
+        } catch (error) {
+          setStatus(
+            error instanceof Error
+              ? error.message
+              : "The result could not be saved.",
+            "error"
+          );
+
+          updateSummary(
+            "internet",
+            "Failed",
+            "fail"
+          );
+        } finally {
+          runButton.disabled = false;
+
+          runButton.textContent =
+            "Run and record again";
+        }
+      };
+
+      setStatus(
+        "Starting the Internet test..."
+      );
+
+      test.play();
+    }
+
+    startCameraButton.addEventListener(
+      "click",
+      async () => {
+        startCameraButton.disabled = true;
+
+        startCameraButton.textContent =
+          "Starting camera...";
+
+        await startCamera(
+          cameraSelect.value
+        );
+
+        startCameraButton.disabled = false;
+
+        startCameraButton.textContent =
+          "Restart camera";
+      }
+    );
+
+    captureButton.addEventListener(
+      "click",
+      captureSnapshot
+    );
+
+    retakeButton.addEventListener(
+      "click",
+      retakeSnapshot
+    );
+
+    cameraSelect.addEventListener(
+      "change",
+      async () => {
+        if (!cameraSelect.value) {
+          return;
+        }
+
+        await startCamera(
+          cameraSelect.value
+        );
+      }
+    );
+
+    startMicrophoneButton.addEventListener(
+      "click",
+      async () => {
+        startMicrophoneButton.disabled = true;
+
+        startMicrophoneButton.textContent =
+          "Starting microphone...";
+
+        await startMicrophone(
+          microphoneSelect.value
+        );
+
+        startMicrophoneButton.disabled = false;
+
+        if (
+          microphonePermission !== "granted"
+        ) {
+          startMicrophoneButton.textContent =
+            "Try microphone again";
+        }
+      }
+    );
+
+    microphoneSelect.addEventListener(
+      "change",
+      async () => {
+        if (!microphoneSelect.value) {
+          return;
+        }
+
+        await startMicrophone(
+          microphoneSelect.value
+        );
+      }
+    );
+
+    speakerTestButton.addEventListener(
+      "click",
+      playSpeakerTest
+    );
+
+    speakerConfirmButton.addEventListener(
+      "click",
+      confirmSpeaker
+    );
+
+    form.addEventListener(
+      "submit",
+      async (event) => {
+        event.preventDefault();
+
+        if (!form.reportValidity()) {
+          return;
+        }
+
+        if (!validateReadinessInputs()) {
+          return;
+        }
+
+        runButton.disabled = true;
+
+        runButton.textContent =
+          "Testing and analyzing...";
+
+        resultPanel.classList.remove(
+          "visible"
+        );
+
+        try {
+          await runSpeedTest();
+        } catch (error) {
+          setStatus(
+            error instanceof Error
+              ? error.message
+              : "The readiness test could not start.",
+            "error"
+          );
+
+          updateSummary(
+            "internet",
+            "Failed",
+            "fail"
+          );
+
+          runButton.disabled = false;
+
+          runButton.textContent =
+            "Try again";
+        }
+      }
+    );
+
+    window.addEventListener(
+      "beforeunload",
+      () => {
+        stopStream(cameraStream);
+        stopStream(microphoneStream);
+        stopMicrophoneMeter();
+
+        if (audioContext) {
+          audioContext.close().catch(
+            () => {}
+          );
+        }
+      }
+    );
+
+    cameraPermission =
+      await permissionState("camera");
+
+    microphonePermission =
+      await permissionState("microphone");
+
+    if (
+      navigator.mediaDevices?.addEventListener
+    ) {
+      navigator.mediaDevices.addEventListener(
+        "devicechange",
+        populateDeviceLists
+      );
+    }
+  </script>
+</body>
+</html>
