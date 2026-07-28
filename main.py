@@ -17,6 +17,7 @@ import numpy as np
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -36,6 +37,33 @@ logger = logging.getLogger("presenter-readiness-check")
 app = FastAPI(
     title="Presenter Readiness Check",
     version="3.0.0",
+)
+
+
+# =============================================================================
+# CORS
+# =============================================================================
+# The form that submits to this API (e.g. the Lovable-hosted front end) is
+# served from a different origin than this API, so the browser requires
+# CORS headers on the response or the fetch() call is blocked silently.
+# Configure ALLOWED_ORIGINS as a comma-separated list in .env; falls back to
+# the known Lovable site and localhost for local development.
+
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+] or [
+    "https://lawlinepresentercheck.lovable.app",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
