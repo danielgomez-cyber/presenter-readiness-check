@@ -4,6 +4,7 @@ import base64
 import binascii
 import json
 import logging
+import math
 import os
 import re
 import uuid
@@ -159,6 +160,15 @@ MIN_BLUR_SCORE = env_float("MIN_BLUR_SCORE", 50.0)
 MIN_BACKGROUND_SCORE = env_float("MIN_BACKGROUND_SCORE", 45.0)
 MIN_OVERALL_SCORE = env_float("MIN_OVERALL_SCORE", 75.0)
 
+# Target band for the microphone's peak level, in dBFS. Standard guidance
+# is an average speaking level of -18 to -12 dBFS with peaks landing
+# around -6 dBFS; since the browser only reports a single peak reading
+# (see static/index.html's state.mic.peak), that peak is flagged directly
+# against the outer bounds of that guidance (-18 too quiet, -6 too loud /
+# clipping risk).
+MIC_PEAK_MIN_DBFS = env_float("MIC_PEAK_MIN_DBFS", -18.0)
+MIC_PEAK_MAX_DBFS = env_float("MIC_PEAK_MAX_DBFS", -6.0)
+
 MAX_SNAPSHOT_BYTES = env_int(
     "MAX_SNAPSHOT_BYTES",
     4_000_000,
@@ -263,6 +273,13 @@ HEADERS = [
     "Snapshot Attachment URL",
     "Integration Status",
     "Notes",
+
+    # Added at the END, not inserted alongside the related presenter
+    # fields above -- inserting a column in the middle would misalign
+    # every row already written to the sheet, since existing rows keep
+    # their values in their original column positions.
+    "Lawline Subscriber",
+    "Using Virtual Background",
 ]
 
 
@@ -326,6 +343,11 @@ class ReadinessSubmission(BaseModel):
         default="",
         max_length=200,
     )
+
+    # Required radio-button questions on the form (empty string only if a
+    # future frontend build somehow bypasses the "required" gate).
+    is_subscriber: Literal["yes", "no", ""] = ""
+    using_virtual_background: Literal["yes", "no", ""] = ""
 
     connection_type: Literal[
         "Ethernet",
@@ -519,6 +541,49 @@ def safe_filename(value: str) -> str:
 
 def device_name(value: str) -> str:
     return value or "Browser did not provide a device name"
+
+
+def yes_no_field(value: str) -> str:
+    """Render a required yes/no radio-button answer (is_subscriber,
+    using_virtual_background) for display. "" only happens if a future
+    frontend build bypasses the form's required gate; falls back to
+    "Not specified" there, matching the wording already used in the
+    presenter-facing results email (readiness-email.server.ts)."""
+    if value == "yes":
+        return "Yes"
+    if value == "no":
+        return "No"
+    return "Not specified"
+
+
+def microphone_peak_dbfs(peak_level: float) -> float:
+    """Convert the 0-1 linear peak amplitude (microphone_peak_level) to
+    dBFS. 0 dBFS is full scale (peak_level == 1.0); quieter signals are
+    negative. A peak of 0 (silence / no signal) has no finite dB value,
+    so this returns -inf rather than raising on log10(0).
+    """
+    if peak_level <= 0:
+        return float("-inf")
+
+    return 20 * math.log10(peak_level)
+
+
+def peak_level_dbfs(peak_level: float) -> str:
+    """Render the 0-1 linear peak amplitude as a dBFS string for display
+    (Trello card, etc.)."""
+    db = microphone_peak_dbfs(peak_level)
+
+    if db == float("-inf"):
+        return "-inf dBFS"
+
+    return f"{db:.1f} dBFS"
+
+
+def microphone_peak_in_range(peak_level: float) -> bool:
+    """True if the peak level falls within the target dBFS band
+    (MIC_PEAK_MIN_DBFS to MIC_PEAK_MAX_DBFS)."""
+    db = microphone_peak_dbfs(peak_level)
+    return MIC_PEAK_MIN_DBFS <= db <= MIC_PEAK_MAX_DBFS
 
 
 def score_grade(score: float) -> str:
@@ -1587,6 +1652,35 @@ def assess_submission(
             "No microphone signal was detected"
         )
 
+    mic_peak_db = microphone_peak_dbfs(
+        payload.microphone_peak_level
+    )
+    mic_peak_in_range = (
+        MIC_PEAK_MIN_DBFS <= mic_peak_db <= MIC_PEAK_MAX_DBFS
+    )
+
+    # Only flag the level itself if a signal was actually detected --
+    # otherwise this would just duplicate the "no signal" issue above.
+    if payload.microphone_signal_detected and not mic_peak_in_range:
+        mic_peak_display = (
+            "-inf"
+            if mic_peak_db == float("-inf")
+            else f"{mic_peak_db:.1f}"
+        )
+
+        if mic_peak_db < MIC_PEAK_MIN_DBFS:
+            microphone_issues.append(
+                f"Microphone peak level is {mic_peak_display} dBFS "
+                f"(too quiet); target range is {MIC_PEAK_MIN_DBFS:.0f} "
+                f"to {MIC_PEAK_MAX_DBFS:.0f} dBFS"
+            )
+        else:
+            microphone_issues.append(
+                f"Microphone peak level is {mic_peak_display} dBFS "
+                f"(too loud / clipping risk); target range is "
+                f"{MIC_PEAK_MIN_DBFS:.0f} to {MIC_PEAK_MAX_DBFS:.0f} dBFS"
+            )
+
     if not payload.speaker_confirmed:
         speaker_issues.append(
             "Speaker playback was not confirmed"
@@ -1715,6 +1809,18 @@ def assess_submission(
         fixes.append(
             "Select the intended microphone and speak closer to it."
         )
+
+    if payload.microphone_signal_detected and not mic_peak_in_range:
+        if mic_peak_db < MIC_PEAK_MIN_DBFS:
+            fixes.append(
+                "Increase microphone gain or move closer to the mic — "
+                "the level is too quiet."
+            )
+        else:
+            fixes.append(
+                "Reduce microphone gain or move back from the mic — "
+                "the level is too loud and risks clipping."
+            )
 
     if not payload.speaker_confirmed:
         fixes.append(
@@ -1897,6 +2003,9 @@ def assess_submission(
         "microphone_pass": microphone_pass,
         "speaker_pass": speaker_pass,
         "visual_pass": visual_pass,
+
+        "microphone_peak_db": mic_peak_db,
+        "microphone_peak_in_range": mic_peak_in_range,
 
         "overall_score": overall_score,
         "overall_grade": letter_grade(
@@ -2111,6 +2220,9 @@ def append_sheet_row(
         "",
         integration_status,
         payload.notes,
+
+        payload.is_subscriber,
+        payload.using_virtual_background,
     ]
 
     response = (
@@ -2494,6 +2606,79 @@ def get_trello_label_ids(
     return label_ids
 
 
+def build_camera_section(
+    payload: ReadinessSubmission,
+    visual: dict[str, Any],
+    camera_score: float,
+) -> list[str]:
+    """Combined Camera + visual-assessment block for the Trello card.
+
+    Replaces the old separate "## Camera" and "## Visual assessment"
+    headings with one "## Camera" section that also explains WHY the
+    camera score came out the way it did. Face detected / face count /
+    face centered / headroom acceptable are intentionally left out here —
+    they're still in the Google Sheet, just not on the card.
+    """
+    deductions: list[str] = []
+
+    if visual.get("blur_detected"):
+        deductions.append("blurry/soft image")
+
+    if visual.get("backlighting_detected"):
+        deductions.append("backlighting")
+
+    if visual.get("background_clutter_detected"):
+        deductions.append("cluttered background")
+
+    # NOTE: the dict key is "glasses_glare_warning" everywhere else in
+    # this file (see analyze_snapshot / empty_visual_analysis) — using
+    # "glasses_glare" here would silently never match.
+    if visual.get("glasses_glare_warning"):
+        deductions.append("glasses glare")
+
+    if not visual.get("face_detected"):
+        deductions.append("no face detected")
+    elif not visual.get("face_centered"):
+        deductions.append("face off-center")
+
+    if visual.get("face_detected") and not visual.get("headroom_acceptable"):
+        deductions.append("poor headroom")
+
+    width = payload.camera_width
+    height = payload.camera_height
+    fps = payload.camera_fps
+
+    if width and height and (width < 1280 or height < 720):
+        deductions.append("resolution below 720p")
+
+    if fps and fps < 24:
+        deductions.append("low frame rate")
+
+    if deductions:
+        reason = "Score reduced by: " + ", ".join(deductions) + "."
+    elif camera_score >= 90:
+        reason = "No issues detected."
+    else:
+        reason = "No specific visual issues detected."
+
+    resolution = f"{width} × {height}" if width and height else "Unknown"
+    frame_rate = f"{fps:.1f} FPS" if fps else "Unknown"
+
+    return [
+        "## Camera",
+        f"**Device:** {device_name(payload.camera_device)}",
+        f"**Resolution:** {resolution}",
+        f"**Frame rate:** {frame_rate}",
+        f"**Camera score:** {camera_score:.0f}/100",
+        f"**Why:** {reason}",
+        "",
+        f"**Backlighting detected:** {yes_no(visual.get('backlighting_detected'))}",
+        f"**Blur detected:** {yes_no(visual.get('blur_detected'))}",
+        f"**Background clutter detected:** {yes_no(visual.get('background_clutter_detected'))}",
+        f"**Possible glasses glare:** {yes_no(visual.get('glasses_glare_warning'))}",
+    ]
+
+
 def trello_description(
     payload: ReadinessSubmission,
     submission_id: str,
@@ -2508,22 +2693,6 @@ def trello_description(
         "🟢"
         if recommendation == "Ready"
         else "🟠"
-    )
-
-    camera_resolution = (
-        f"{payload.camera_width} × "
-        f"{payload.camera_height}"
-        if (
-            payload.camera_width > 0
-            and payload.camera_height > 0
-        )
-        else "Not detected"
-    )
-
-    camera_fps = (
-        f"{payload.camera_fps:.1f} FPS"
-        if payload.camera_fps > 0
-        else "Not detected"
     )
 
     lines = [
@@ -2597,7 +2766,6 @@ def trello_description(
         [
             "",
             "## Presenter",
-            f"**Submission ID:** {submission_id}",
             f"**Name:** {payload.presenter_name}",
             f"**Email:** {payload.email}",
             (
@@ -2611,6 +2779,14 @@ def trello_description(
             (
                 f"**Location:** "
                 f"{payload.location or 'Not supplied'}"
+            ),
+            (
+                f"**Lawline subscriber:** "
+                f"{yes_no_field(payload.is_subscriber)}"
+            ),
+            (
+                f"**Using virtual background:** "
+                f"{yes_no_field(payload.using_virtual_background)}"
             ),
             "",
             "## Internet",
@@ -2633,65 +2809,17 @@ def trello_description(
                 f"{payload.latency_ms:.0f} ms — "
                 f"{assessment['latency_grade']}"
             ),
-            (
-                f"**Jitter:** "
-                f"{payload.jitter_ms:.0f} ms — "
-                f"{assessment['jitter_grade']}"
-            ),
             "",
-            "## Camera",
-            (
-                f"**Device:** "
-                f"{device_name(payload.camera_device)}"
-            ),
-            f"**Resolution:** {camera_resolution}",
-            f"**Frame rate:** {camera_fps}",
-            (
-                f"**Camera score:** "
-                f"{float(assessment['camera_score']):.0f}/100"
-            ),
         ]
     )
 
-    if payload.snapshot_data_url:
-        lines.extend(
-            [
-                "",
-                "## Visual assessment",
-                (
-                    f"**Face detected:** "
-                    f"{yes_no(visual['face_detected'])}"
-                ),
-                (
-                    f"**Number of faces:** "
-                    f"{visual['face_count']}"
-                ),
-                (
-                    f"**Face centered:** "
-                    f"{yes_no(visual['face_centered'])}"
-                ),
-                (
-                    f"**Headroom acceptable:** "
-                    f"{yes_no(visual['headroom_acceptable'])}"
-                ),
-                (
-                    f"**Backlighting detected:** "
-                    f"{yes_no(visual['backlighting_detected'])}"
-                ),
-                (
-                    f"**Blur detected:** "
-                    f"{yes_no(visual['blur_detected'])}"
-                ),
-                (
-                    f"**Background clutter detected:** "
-                    f"{yes_no(visual['background_clutter_detected'])}"
-                ),
-                (
-                    f"**Possible glasses glare:** "
-                    f"{yes_no(visual['glasses_glare_warning'])}"
-                ),
-            ]
+    lines.extend(
+        build_camera_section(
+            payload,
+            visual,
+            float(assessment["camera_score"]),
         )
+    )
 
     lines.extend(
         [
@@ -2706,8 +2834,11 @@ def trello_description(
                 f"{yes_no(payload.microphone_signal_detected)}"
             ),
             (
+                f"{status_icon(bool(assessment['microphone_peak_in_range']))} "
                 f"**Peak level:** "
-                f"{payload.microphone_peak_level:.4f}"
+                f"{peak_level_dbfs(payload.microphone_peak_level)} "
+                f"(target: {MIC_PEAK_MIN_DBFS:.0f} to "
+                f"{MIC_PEAK_MAX_DBFS:.0f} dBFS)"
             ),
             (
                 f"**Speaker playback confirmed:** "
