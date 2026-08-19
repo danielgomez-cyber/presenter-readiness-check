@@ -184,6 +184,14 @@ TRELLO_LIST_ID = os.getenv(
     "",
 ).strip()
 
+# A DIFFERENT Trello board from TRELLO_BOARD_ID above -- the "2026
+# Programs Pipeline" board, where each program has its own card (titled
+# either "First Last" or "Last, First", sometimes listing several
+# presenters on one cohort card). When set, every readiness-check card
+# gets linked to its matching Program card so a producer looking at
+# either one can jump straight to the other.
+TRELLO_PROGRAMS_BOARD_ID = os.getenv("TRELLO_PROGRAMS_BOARD_ID", "").strip()
+
 
 # =============================================================================
 # Readiness thresholds
@@ -2890,6 +2898,102 @@ def build_camera_section(
     ]
 
 
+# ============================================================
+# PROGRAM CARD LINKING (2026 Programs Pipeline board)
+# ============================================================
+
+def _program_name_tokens(name: str) -> set[str]:
+    """Lowercase, punctuation-stripped word tokens from a name, for
+    order/punctuation-independent matching. Handles "First Last" vs
+    "Last, First" (Program cards use both), and multi-presenter cohort
+    card titles like "Beety, Valena, Ethan Rice, Nathan Cisneros" -- a
+    single presenter's two name-tokens will still be a subset of a much
+    longer cohort title.
+    """
+    return set(re.findall(r"[a-z0-9]+", name.lower()))
+
+
+def find_program_card(
+    presenter_name: str,
+    email: str,
+) -> Optional[dict[str, Any]]:
+    """Find the matching card on the 2026 Programs Pipeline board
+    (TRELLO_PROGRAMS_BOARD_ID), so the readiness-check card can be linked
+    to it.
+
+    Matching priority:
+      1. The presenter's email found in the card's description -- Program
+         cards list "Faculty email(s): ..." there, and this is the most
+         reliable signal since it doesn't depend on name formatting.
+      2. Falls back to a name-token match against the card's title: every
+         word of presenter_name must appear in the title, in any order,
+         so "Kendra Haar" matches a card titled "Haar, Kendra" just as
+         well as "Kendra Haar".
+
+    Returns None if TRELLO_PROGRAMS_BOARD_ID isn't configured, or if
+    nothing matches. Never raises -- a failed lookup here should never
+    block creating the readiness-check card itself.
+    """
+    if not TRELLO_PROGRAMS_BOARD_ID or not (presenter_name or email):
+        return None
+
+    try:
+        resp = requests.get(
+            f"https://api.trello.com/1/boards/{TRELLO_PROGRAMS_BOARD_ID}/cards",
+            params={
+                "key": TRELLO_KEY,
+                "token": TRELLO_TOKEN,
+                "fields": "name,id,url,desc",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        cards = resp.json()
+    except Exception:
+        logger.exception("Program card lookup failed")
+        return None
+
+    target_email = (email or "").strip().lower()
+    if target_email:
+        for card in cards:
+            if target_email in str(card.get("desc", "")).lower():
+                return card
+
+    target_tokens = _program_name_tokens(presenter_name or "")
+    if target_tokens:
+        for card in cards:
+            card_tokens = _program_name_tokens(str(card.get("name", "")))
+            if target_tokens.issubset(card_tokens):
+                return card
+
+    return None
+
+
+def link_trello_cards(card_id: str, other_card_url: str) -> bool:
+    """Attach another Trello card (by URL) to this card as a linked-card
+    attachment. Trello auto-detects trello.com card URLs and renders them
+    as a linked-card preview -- the same result as manually pasting a
+    card link into the Attachments section. Best-effort: logs and
+    swallows failures rather than raising, since a missed link should
+    never block the rest of the submission. Returns whether it succeeded.
+    """
+    try:
+        resp = requests.post(
+            f"https://api.trello.com/1/cards/{card_id}/attachments",
+            params={
+                "key": TRELLO_KEY,
+                "token": TRELLO_TOKEN,
+                "url": other_card_url,
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception:
+        logger.exception("Linking Trello cards failed")
+        return False
+
+
 def trello_description(
     payload: ReadinessSubmission,
     submission_id: str,
@@ -3436,6 +3540,26 @@ def record_submission(
                     integration_status += (
                         "; snapshot attachment failed"
                     )
+
+            program_card = find_program_card(
+                payload.presenter_name,
+                str(payload.email),
+            )
+
+            if program_card:
+                linked_forward = link_trello_cards(
+                    card_id, str(program_card.get("url", ""))
+                )
+                linked_back = link_trello_cards(
+                    str(program_card.get("id", "")), trello_url
+                )
+
+                if linked_forward and linked_back:
+                    integration_status += "; linked to program card"
+                else:
+                    integration_status += "; program card link failed"
+            elif TRELLO_PROGRAMS_BOARD_ID:
+                integration_status += "; no matching program card found"
 
         except TrelloIntegrationError as exc:
             logger.warning(
