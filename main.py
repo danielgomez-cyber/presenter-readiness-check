@@ -8,7 +8,7 @@ import math
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -102,7 +102,51 @@ def env_int(name: str, default: int) -> int:
 
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/calendar.readonly",
 ]
+
+# =============================================================================
+# Remote Filming Test booking lookup (Google Calendar)
+# =============================================================================
+# The "Book your remote filming test" step sends presenters to a Google
+# Calendar Appointment Schedule page. Booking there creates a real Calendar
+# event with the presenter listed as an attendee (by the email they typed
+# into the booking page). To surface "did this presenter book their test"
+# on the Trello card, this backend looks up that calendar and matches
+# events by attendee email against the readiness-check submitter's email.
+#
+# Setup required (one-time, by the calendar owner):
+#   1. Share the calendar behind the booking page with this backend's
+#      service account email (see service-account.json's "client_email")
+#      -- "See all event details" access is enough, no edit access needed.
+#   2. If the booking page isn't on that account's PRIMARY calendar, set
+#      GOOGLE_CALENDAR_ID to the calendar's ID (Calendar Settings -> that
+#      calendar -> "Integrate calendar" -> Calendar ID). Defaults to
+#      "primary".
+GOOGLE_CALENDAR_ID = (
+    os.getenv("GOOGLE_CALENDAR_ID", "primary").strip() or "primary"
+)
+
+# Only events whose title contains this text are considered -- guards
+# against matching an unrelated event on the same calendar.
+FILMING_TEST_CALENDAR_KEYWORD = (
+    os.getenv("FILMING_TEST_CALENDAR_KEYWORD", "Remote Filming Test").strip()
+    or "Remote Filming Test"
+)
+
+# How far back/forward to search for a matching booking. Wide enough to
+# catch a test the presenter already completed, or one they booked for
+# later, without querying the calendar's entire history.
+FILMING_TEST_LOOKUP_DAYS_PAST = env_int("FILMING_TEST_LOOKUP_DAYS_PAST", 30)
+FILMING_TEST_LOOKUP_DAYS_FUTURE = env_int("FILMING_TEST_LOOKUP_DAYS_FUTURE", 120)
+
+# Shown on the Trello card when no booking is found, so whoever reads the
+# card can immediately send the presenter to book.
+FILMING_TEST_BOOKING_URL = os.getenv(
+    "FILMING_TEST_BOOKING_URL",
+    "https://calendar.google.com/calendar/u/0/appointments/schedules/"
+    "AcZssZ1Jaj1s5_aXkicZ3nec_QXe7cfW4Z_GeKPVhppnpUbKficbjUsQYKopR0KwdrDgMkiVa77vUJk5",
+).strip()
 
 SPREADSHEET_ID = os.getenv(
     "GOOGLE_SPREADSHEET_ID",
@@ -280,6 +324,10 @@ HEADERS = [
     # their values in their original column positions.
     "Lawline Subscriber",
     "Using Virtual Background",
+    "Testing On Intended Device/Location",
+    "Device/Location Note",
+    "Filming Test Booked",
+    "Filming Test Date",
 ]
 
 
@@ -348,6 +396,16 @@ class ReadinessSubmission(BaseModel):
     # future frontend build somehow bypasses the "required" gate).
     is_subscriber: Literal["yes", "no", ""] = ""
     using_virtual_background: Literal["yes", "no", ""] = ""
+
+    # "Before you begin" gate: is this check running on the actual
+    # presentation-day device/location? device_note is only filled in
+    # when the answer is "no".
+    testing_on_intended: Literal["yes", "no", ""] = ""
+
+    device_note: str = Field(
+        default="",
+        max_length=300,
+    )
 
     connection_type: Literal[
         "Ethernet",
@@ -483,6 +541,7 @@ class ReadinessSubmission(BaseModel):
         "effective_network_type",
         "notes",
         "website",
+        "device_note",
     )
     @classmethod
     def strip_text(cls, value: str) -> str:
@@ -541,6 +600,29 @@ def safe_filename(value: str) -> str:
 
 def device_name(value: str) -> str:
     return value or "Browser did not provide a device name"
+
+
+def testing_on_intended_line(payload: "ReadinessSubmission") -> str:
+    """One-line summary of the "Before you begin" gate question, for the
+    top of the Trello card. "no" surfaces the presenter's free-text note
+    about what they're actually testing on."""
+    if payload.testing_on_intended == "yes":
+        return (
+            f"{status_icon(True)} **Testing on presentation-day "
+            f"device/location:** Yes"
+        )
+
+    if payload.testing_on_intended == "no":
+        note = payload.device_note or "no detail given"
+        return (
+            f"{status_icon(False)} **Testing on presentation-day "
+            f"device/location:** No — {note}"
+        )
+
+    return (
+        f"{status_icon(False)} **Testing on presentation-day "
+        f"device/location:** Not specified"
+    )
 
 
 def yes_no_field(value: str) -> str:
@@ -729,6 +811,120 @@ def sheets_service():
         "v4",
         credentials=google_credentials(),
         cache_discovery=False,
+    )
+
+
+def calendar_service():
+    return build(
+        "calendar",
+        "v3",
+        credentials=google_credentials(),
+        cache_discovery=False,
+    )
+
+
+def format_calendar_start(value: str) -> str:
+    """Render a Calendar API event start value ("dateTime" or all-day
+    "date") for display on the Trello card."""
+    if not value:
+        return "unknown time"
+
+    try:
+        if "T" in value:
+            dt = datetime.fromisoformat(value)
+            return dt.strftime("%b %-d, %Y, %-I:%M %p")
+        return datetime.fromisoformat(value).strftime("%b %-d, %Y")
+    except ValueError:
+        return value
+
+
+def find_filming_test_booking(
+    email: str,
+) -> tuple[Optional[dict[str, str]], bool]:
+    """Look up whether this presenter has a booking on the Remote Filming
+    Tests calendar, matched by email against the event's attendees.
+
+    Returns (booking, lookup_ok):
+      - booking: {"start", "summary", "html_link"} for the soonest
+        matching event within the search window, or None if nothing
+        matched.
+      - lookup_ok: False only if the lookup itself failed (missing
+        calendar share, network error, etc.) -- kept distinct from "no
+        booking found" so a broken lookup is never reported to the
+        reader as "they didn't book."
+    """
+    if not email:
+        return None, True
+
+    try:
+        service = calendar_service()
+
+        now = datetime.now(timezone.utc)
+        time_min = (now - timedelta(days=FILMING_TEST_LOOKUP_DAYS_PAST)).isoformat()
+        time_max = (now + timedelta(days=FILMING_TEST_LOOKUP_DAYS_FUTURE)).isoformat()
+
+        events_result = (
+            service.events()
+            .list(
+                calendarId=GOOGLE_CALENDAR_ID,
+                timeMin=time_min,
+                timeMax=time_max,
+                q=FILMING_TEST_CALENDAR_KEYWORD,
+                singleEvents=True,
+                orderBy="startTime",
+                maxResults=250,
+            )
+            .execute()
+        )
+
+        target = email.strip().lower()
+
+        for event in events_result.get("items", []):
+            attendee_emails = {
+                str(a.get("email", "")).strip().lower()
+                for a in event.get("attendees", [])
+            }
+
+            if target in attendee_emails:
+                start = event.get("start", {})
+                return (
+                    {
+                        "start": start.get("dateTime") or start.get("date") or "",
+                        "summary": event.get("summary", ""),
+                        "html_link": event.get("htmlLink", ""),
+                    },
+                    True,
+                )
+
+        return None, True
+
+    except Exception:
+        logger.exception("Filming test calendar lookup failed")
+        return None, False
+
+
+def filming_test_booking_line(
+    booking: Optional[dict[str, str]],
+    lookup_ok: bool,
+) -> str:
+    """One-line summary of the filming-test booking check, for the top of
+    the Trello card."""
+    if not lookup_ok:
+        return (
+            f"{status_icon(False)} **Filming test booked:** Could not "
+            f"check (calendar lookup failed) — verify manually: "
+            f"{FILMING_TEST_BOOKING_URL}"
+        )
+
+    if booking:
+        return (
+            f"{status_icon(True)} **Filming test booked:** Yes — "
+            f"{format_calendar_start(booking['start'])}"
+        )
+
+    return (
+        f"{status_icon(False)} **Filming test booked:** Not booked yet "
+        f"— {FILMING_TEST_BOOKING_URL}"
     )
 
 
@@ -2039,6 +2235,8 @@ def append_sheet_row(
     assessment: dict[str, Any],
     snapshot_filename: str,
     integration_status: str,
+    booking: Optional[dict[str, str]] = None,
+    booking_lookup_ok: bool = True,
 ) -> int | None:
     timestamp = datetime.now(
         timezone.utc
@@ -2223,6 +2421,19 @@ def append_sheet_row(
 
         payload.is_subscriber,
         payload.using_virtual_background,
+        payload.testing_on_intended,
+        payload.device_note,
+
+        (
+            "Unknown"
+            if not booking_lookup_ok
+            else ("Yes" if booking else "No")
+        ),
+        (
+            format_calendar_start(booking["start"])
+            if (booking_lookup_ok and booking)
+            else ""
+        ),
     ]
 
     response = (
@@ -2684,6 +2895,8 @@ def trello_description(
     submission_id: str,
     visual: dict[str, Any],
     assessment: dict[str, Any],
+    booking: Optional[dict[str, str]] = None,
+    booking_lookup_ok: bool = True,
 ) -> str:
     recommendation = str(
         assessment["recommendation"]
@@ -2707,6 +2920,8 @@ def trello_description(
             f"**Overall quality:** "
             f"{score_grade(float(assessment['overall_score']))}"
         ),
+        testing_on_intended_line(payload),
+        filming_test_booking_line(booking, booking_lookup_ok),
         "",
         "## Readiness summary",
         (
@@ -2881,6 +3096,8 @@ def create_trello_card(
     submission_id: str,
     visual: dict[str, Any],
     assessment: dict[str, Any],
+    booking: Optional[dict[str, str]] = None,
+    booking_lookup_ok: bool = True,
 ) -> tuple[str, str]:
     list_id = trello_list_id_for_result(
         str(assessment["recommendation"])
@@ -2915,6 +3132,8 @@ def create_trello_card(
             submission_id,
             visual,
             assessment,
+            booking=booking,
+            booking_lookup_ok=booking_lookup_ok,
         ),
         "pos": "top",
     }
@@ -3133,6 +3352,12 @@ def record_submission(
         visual,
     )
 
+    # Best-effort: never let a calendar lookup failure block the actual
+    # submission. booking_lookup_ok distinguishes "checked, not booked"
+    # from "couldn't check" so the card never falsely reports "not
+    # booked" when the real issue is a broken calendar share/auth.
+    booking, booking_lookup_ok = find_filming_test_booking(str(payload.email))
+
     initial_status = (
         "Pending"
         if trello_is_configured()
@@ -3152,6 +3377,8 @@ def record_submission(
             assessment=assessment,
             snapshot_filename=snapshot_filename,
             integration_status=initial_status,
+            booking=booking,
+            booking_lookup_ok=booking_lookup_ok,
         )
 
     except Exception as exc:
@@ -3178,6 +3405,8 @@ def record_submission(
                 submission_id=submission_id,
                 visual=visual,
                 assessment=assessment,
+                booking=booking,
+                booking_lookup_ok=booking_lookup_ok,
             )
 
             integration_status = (
