@@ -336,6 +336,7 @@ HEADERS = [
     "Device/Location Note",
     "Filming Test Booked",
     "Filming Test Date",
+    "Presenting From Conference Room",
 ]
 
 
@@ -402,6 +403,7 @@ class ReadinessSubmission(BaseModel):
 
     # Required radio-button questions on the form (empty string only if a
     # future frontend build somehow bypasses the "required" gate).
+    presenting_from_conference_room: Literal["yes", "no", ""] = ""
     is_subscriber: Literal["yes", "no", ""] = ""
     using_virtual_background: Literal["yes", "no", ""] = ""
 
@@ -2442,6 +2444,7 @@ def append_sheet_row(
             if (booking_lookup_ok and booking)
             else ""
         ),
+        payload.presenting_from_conference_room,
     ]
 
     response = (
@@ -3098,6 +3101,10 @@ def trello_description(
             (
                 f"**Location:** "
                 f"{payload.location or 'Not supplied'}"
+            ),
+            (
+                f"**Presenting from a conference room:** "
+                f"{yes_no_field(payload.presenting_from_conference_room)}"
             ),
             (
                 f"**Lawline subscriber:** "
