@@ -51,6 +51,22 @@
   <div class="grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)] lg:items-start">
     <section class="card p-6 sm:p-8">
       <form id="readinessForm" class="space-y-6" novalidate>
+        <!-- Before you begin -->
+        <div>
+          <h2 class="text-xl font-semibold">Before you begin</h2>
+          <p class="mt-1 text-sm" style="color:var(--muted)">Use the same device, room, microphone, camera, and Internet connection you plan to use for your Lawline presentation whenever possible.</p>
+          <fieldset class="mt-4">
+            <legend class="text-sm font-medium">Are you testing on your presentation-day device and location? <span style="color:var(--destructive)">*</span></legend>
+            <div class="mt-2 flex flex-wrap gap-4 text-sm">
+              <label class="flex items-center gap-2"><input type="radio" name="testing_on_intended" value="yes" required style="accent-color:var(--primary)" /> Yes</label>
+              <label class="flex items-center gap-2"><input type="radio" name="testing_on_intended" value="no" required style="accent-color:var(--primary)" /> No</label>
+            </div>
+          </fieldset>
+          <label id="deviceNoteWrap" class="mt-4 hidden text-sm font-medium">What will be different on presentation day?
+            <textarea name="device_note" id="deviceNote" class="field-input mt-1.5" maxlength="300" rows="2" placeholder="Example: I will be in a conference room using a different laptop and microphone."></textarea>
+          </label>
+        </div>
+
         <!-- Presenter info -->
         <div>
           <h2 class="text-xl font-semibold">Presenter information</h2>
@@ -77,6 +93,27 @@
                 <option>Ethernet</option><option>Wi-Fi</option><option>Hotspot</option><option>Other</option>
               </select>
             </label>
+            <fieldset class="sm:col-span-2">
+              <legend class="text-sm font-medium">Will you be presenting from a conference room? <span style="color:var(--destructive)">*</span></legend>
+              <div class="mt-2 flex flex-wrap gap-4 text-sm">
+                <label class="flex items-center gap-2"><input type="radio" name="presenting_from_conference_room" value="yes" required style="accent-color:var(--primary)" /> Yes</label>
+                <label class="flex items-center gap-2"><input type="radio" name="presenting_from_conference_room" value="no" required style="accent-color:var(--primary)" /> No</label>
+              </div>
+            </fieldset>
+            <fieldset class="sm:col-span-2">
+              <legend class="text-sm font-medium">Are you currently a Lawline subscriber? <span style="color:var(--destructive)">*</span></legend>
+              <div class="mt-2 flex flex-wrap gap-4 text-sm">
+                <label class="flex items-center gap-2"><input type="radio" name="is_subscriber" value="yes" required style="accent-color:var(--primary)" /> Yes</label>
+                <label class="flex items-center gap-2"><input type="radio" name="is_subscriber" value="no" required style="accent-color:var(--primary)" /> No</label>
+              </div>
+            </fieldset>
+            <fieldset class="sm:col-span-2">
+              <legend class="text-sm font-medium">Will you use a virtual background? <span style="color:var(--destructive)">*</span></legend>
+              <div class="mt-2 flex flex-wrap gap-4 text-sm">
+                <label class="flex items-center gap-2"><input type="radio" name="using_virtual_background" value="yes" required style="accent-color:var(--primary)" /> Yes</label>
+                <label class="flex items-center gap-2"><input type="radio" name="using_virtual_background" value="no" required style="accent-color:var(--primary)" /> No</label>
+              </div>
+            </fieldset>
             <label class="text-sm font-medium sm:col-span-2">Notes
               <textarea name="notes" class="field-input mt-1.5" maxlength="2000" placeholder="Optional details about the setup" rows="2"></textarea>
             </label>
@@ -115,7 +152,7 @@
         <!-- Microphone -->
         <div class="border-t pt-6" style="border-color:var(--border)">
           <h2 class="text-xl font-semibold">Microphone</h2>
-          <p class="mt-1 text-sm" style="color:var(--muted)">Select the microphone you plan to use and speak normally for several seconds.</p>
+          <p class="mt-1 text-sm" style="color:var(--muted)">Select the microphone you plan to use, then run the guided 8-second audio-quality sample. The first 2 seconds measure the room while you stay quiet; the next 6 seconds measure normal speech.</p>
           <label class="mt-4 block text-sm font-medium">Microphone
             <select id="micSelect" class="field-input mt-1.5"><option value="">Start the microphone to view devices</option></select>
           </label>
@@ -127,8 +164,15 @@
           </div>
           <div class="mt-4 flex flex-wrap gap-2">
             <button type="button" id="micStart" class="btn-secondary rounded-full px-4 py-2 text-sm font-medium">Start microphone</button>
+            <button type="button" id="micTest" class="btn-primary rounded-full px-4 py-2 text-sm font-medium" disabled>Run audio quality test</button>
           </div>
           <div id="micState" class="mt-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm tone-idle"><span class="h-2 w-2 rounded-full" style="background:var(--muted)"></span><span>Microphone has not been tested.</span></div>
+          <div id="micMetrics" class="mt-4 hidden grid gap-3 sm:grid-cols-4">
+            <div class="rounded-lg border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Speech level</div><div class="text-sm font-semibold" id="micSpeech">—</div></div>
+            <div class="rounded-lg border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Noise floor</div><div class="text-sm font-semibold" id="micNoise">—</div></div>
+            <div class="rounded-lg border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">SNR</div><div class="text-sm font-semibold" id="micSnr">—</div></div>
+            <div class="rounded-lg border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Clipping</div><div class="text-sm font-semibold" id="micClip">—</div></div>
+          </div>
         </div>
 
         <!-- Speakers -->
@@ -145,17 +189,20 @@
         <!-- Internet -->
         <div class="border-t pt-6" style="border-color:var(--border)">
           <h2 class="text-xl font-semibold">Internet connection</h2>
-          <p class="mt-1 text-sm" style="color:var(--muted)">The speed test runs automatically after the hardware checks are complete.</p>
+          <p class="mt-1 text-sm" style="color:var(--muted)">Run the Internet test after your hardware checks. You can review the connection results before submitting the readiness report.</p>
           <div class="mt-4 grid gap-3 sm:grid-cols-4">
             <div class="rounded-xl border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Download</div><div class="text-lg font-semibold" id="mDown">—</div></div>
             <div class="rounded-xl border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Upload</div><div class="text-lg font-semibold" id="mUp">—</div></div>
             <div class="rounded-xl border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Latency</div><div class="text-lg font-semibold" id="mLat">—</div></div>
             <div class="rounded-xl border p-3" style="border-color:var(--border); background:var(--muted-bg)"><div class="text-xs uppercase" style="color:var(--muted)">Jitter</div><div class="text-lg font-semibold" id="mJit">—</div></div>
           </div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <button type="button" id="internetTest" class="btn-primary rounded-full px-4 py-2 text-sm font-medium">Run Internet speed test</button>
+          </div>
           <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full" style="background:var(--muted-bg)">
             <div id="progress" class="h-full rounded-full" style="background:var(--primary); width:0%; transition:width .3s"></div>
           </div>
-          <p id="statusText" class="mt-3 text-sm" style="color:var(--muted)" aria-live="polite">Complete the hardware checks, then run the readiness test.</p>
+          <p id="statusText" class="mt-3 text-sm" style="color:var(--muted)" aria-live="polite">Complete the hardware checks, then run the Internet speed test.</p>
         </div>
 
         <!-- Consent + submit -->
@@ -167,7 +214,7 @@
             </span>
           </label>
           <button type="submit" id="submitBtn" class="mt-5 inline-flex w-full items-center justify-center rounded-full btn-primary px-6 py-3 text-sm font-semibold sm:w-auto">
-            Run and record readiness check
+            Submit readiness report
           </button>
         </div>
       </form>
@@ -199,8 +246,16 @@
         </div>
         <ul id="resFixes" class="mt-4 space-y-2 text-sm"></ul>
         <div id="resScoresWrap" class="mt-4 hidden">
-          <h4 class="text-xs uppercase tracking-wide font-semibold" style="color:var(--muted)">Component scores</h4>
+          <h4 class="text-xs uppercase tracking-wide font-semibold" style="color:var(--muted)">Headline scores</h4>
           <div id="resScores" class="mt-2 space-y-1 text-sm"></div>
+        </div>
+        <div id="resVisualWrap" class="mt-4 hidden">
+          <h4 class="text-xs uppercase tracking-wide font-semibold" style="color:var(--muted)">Visual quality details</h4>
+          <div id="resVisual" class="mt-2 space-y-1 text-sm"></div>
+        </div>
+        <div id="resAudioWrap" class="mt-4 hidden">
+          <h4 class="text-xs uppercase tracking-wide font-semibold" style="color:var(--muted)">Audio quality details</h4>
+          <div id="resAudio" class="mt-2 space-y-1 text-sm"></div>
         </div>
         <a id="resTrello" href="#" target="_blank" rel="noopener" class="mt-4 hidden text-sm font-medium" style="color:var(--primary)">Open Trello card →</a>
       </section>
@@ -233,12 +288,19 @@
   const state = {
     camera: { active:false, permission:"unknown", width:0, height:0, fps:0, device:"" },
     snapshot: { dataUrl:"", filename:"" },
-    mic: { active:false, permission:"unknown", device:"", signal:false, peak:0 },
+    mic: {
+      active:false, permission:"unknown", device:"", signal:false, peak:0,
+      testCompleted:false, testDuration:0, speechRmsDbfs:-100, speechPeakDbfs:-100,
+      noiseFloorDbfs:-100, snrDb:0, clippingRatio:0, consistencyDb:100,
+      voiceActivityRatio:0
+    },
     speaker: { played:false, confirmed:false },
-    metrics: { download:null, upload:null, latency:null, jitter:null, duration:0 },
+    metrics: { download:null, upload:null, latency:null, jitter:null, duration:0, complete:false, suspectJitter:false },
     checks: { camera:"pending", snapshot:"pending", microphone:"pending", speaker:"pending", internet:"pending" },
   };
-  let camStream=null, micStream=null, audioCtx=null, analyser=null, rafId=null;
+  let camStream=null, micStream=null, audioCtx=null, analyser=null, rafId=null, audioSampleBuffer=null;
+  const AUDIO_QUIET_MS = 2000;
+  const AUDIO_SPEECH_MS = 6000;
 
   // ============ HELPERS ============
   const $ = (s)=>document.querySelector(s);
@@ -246,7 +308,7 @@
     state.checks[key]=val;
     const el = document.querySelector(`[data-check="${key}"]`);
     if (!el) return;
-    const map={pending:["Pending","tone-idle"],listening:["Listening","tone-info"],pass:["Passed","tone-success"],warn:["Review","tone-warning"],fail:["Failed","tone-error"]};
+    const map={pending:["Pending","tone-idle"],listening:["Listening","tone-info"],complete:["Complete","tone-success"],pass:["Passed","tone-success"],warn:["Review","tone-warning"],fail:["Failed","tone-error"]};
     const [text,cls]=map[val];
     el.className="badge "+cls; el.textContent=text;
   };
@@ -257,6 +319,14 @@
   const fmtMbps = (bps)=> bps==null?"—":(bps/1_000_000).toFixed(1)+" Mbps";
   const fmtMs = (ms)=> ms==null?"—":Math.round(ms)+" ms";
   const finiteOrNull = (n)=> (typeof n==="number" && isFinite(n)) ? n : null;
+  const dbfs = (linear)=> 20*Math.log10(Math.max(Number(linear)||0, 1e-5));
+  const avg = (values)=> values.length ? values.reduce((a,b)=>a+b,0)/values.length : 0;
+  const stddev = (values)=> {
+    if(values.length<2) return 0;
+    const m=avg(values);
+    return Math.sqrt(avg(values.map(v=>(v-m)*(v-m))));
+  };
+  const clampDb = (value)=> { const n=Number(value); return Number.isFinite(n) ? Math.max(-100,Math.min(0,n)) : -100; };
 
   async function populateDevices(){
     if(!navigator.mediaDevices?.enumerateDevices) return;
@@ -328,47 +398,138 @@
   }
 
   // ============ MICROPHONE ============
+  function resetAudioQualityResult(){
+    Object.assign(state.mic, {
+      testCompleted:false, testDuration:0, speechRmsDbfs:-100, speechPeakDbfs:-100,
+      noiseFloorDbfs:-100, snrDb:0, clippingRatio:0, consistencyDb:100,
+      voiceActivityRatio:0
+    });
+    $("#micMetrics").classList.add("hidden");
+    $("#micSpeech").textContent="—"; $("#micNoise").textContent="—";
+    $("#micSnr").textContent="—"; $("#micClip").textContent="—";
+  }
   function stopMicMeter(){ if(rafId){cancelAnimationFrame(rafId); rafId=null;} $("#micBar").style.width="0%"; }
+  function readAudioFrame(){
+    if(!analyser) return null;
+    if(!audioSampleBuffer || audioSampleBuffer.length!==analyser.fftSize) audioSampleBuffer=new Float32Array(analyser.fftSize);
+    const buf=audioSampleBuffer;
+    analyser.getFloatTimeDomainData(buf);
+    let sq=0, peak=0, clipped=0;
+    for(const n of buf){
+      sq += n*n;
+      const a=Math.abs(n);
+      if(a>peak) peak=a;
+      if(a>=0.988) clipped++;
+    }
+    const rms=Math.sqrt(sq/buf.length);
+    return { rms, peak, rmsDb:clampDb(dbfs(rms)), peakDb:clampDb(dbfs(peak)), clipped, samples:buf.length };
+  }
   async function startMic(deviceId){
     if(!navigator.mediaDevices?.getUserMedia){ setBox("#micState","Microphone access is not supported.","error"); setCheck("microphone","fail"); state.mic.permission="unavailable"; return; }
     micStream?.getTracks().forEach(t=>t.stop()); stopMicMeter();
-    state.mic.signal=false; state.mic.peak=0;
+    if(audioCtx){ try{ await audioCtx.close(); }catch{} }
+    state.mic.signal=false; state.mic.peak=0; resetAudioQualityResult();
+    $("#micTest").disabled=true;
     setBox("#micState","Requesting microphone access…","info");
     try{
-      const stream = await navigator.mediaDevices.getUserMedia({audio: deviceId?{deviceId:{exact:deviceId},echoCancellation:true,noiseSuppression:true,autoGainControl:true}:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}, video:false});
+      const audioConstraints = deviceId ? {
+        deviceId:{exact:deviceId}, echoCancellation:{ideal:false}, noiseSuppression:{ideal:false}, autoGainControl:{ideal:false}
+      } : { echoCancellation:{ideal:false}, noiseSuppression:{ideal:false}, autoGainControl:{ideal:false} };
+      const stream = await navigator.mediaDevices.getUserMedia({audio:audioConstraints, video:false});
       micStream=stream; state.mic.active=true; state.mic.permission="granted";
       const track=stream.getAudioTracks()[0]; state.mic.device=track?.label||"";
       const AC=window.AudioContext||window.webkitAudioContext;
       audioCtx = new AC();
+      if(audioCtx.state==="suspended") await audioCtx.resume();
       const src=audioCtx.createMediaStreamSource(stream);
-      analyser=audioCtx.createAnalyser(); analyser.fftSize=1024; analyser.smoothingTimeConstant=0.72;
+      analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0;
       src.connect(analyser);
-      const buf=new Uint8Array(analyser.fftSize);
       const loop=()=>{
-        analyser.getByteTimeDomainData(buf);
-        let sq=0, peak=0;
-        for(const v of buf){ const n=(v-128)/128; sq+=n*n; if(Math.abs(n)>peak) peak=Math.abs(n); }
-        const rms=Math.sqrt(sq/buf.length);
-        const level=Math.min(100,Math.max(0,rms*450));
-        $("#micBar").style.width=level+"%";
-        if(peak>state.mic.peak) state.mic.peak=peak;
-        if(rms>=0.018 || peak>=0.08){
-          if(!state.mic.signal){ state.mic.signal=true; setBox("#micState","Microphone signal detected.","success"); setCheck("microphone","pass"); }
-        }else if(!state.mic.signal){
-          setBox("#micState","Microphone is active. Speak normally to test the level.","info");
-          setCheck("microphone","listening");
+        const frame=readAudioFrame();
+        if(frame){
+          const level=Math.min(100,Math.max(0,frame.rms*450));
+          $("#micBar").style.width=level+"%";
+          if(frame.peak>state.mic.peak) state.mic.peak=frame.peak;
+          if(frame.rms>=0.018 || frame.peak>=0.08){
+            if(!state.mic.signal){ state.mic.signal=true; setBox("#micState","Microphone signal detected. Run the guided audio quality test next.","success"); setCheck("microphone","listening"); }
+          }else if(!state.mic.signal){
+            setBox("#micState","Microphone is active. Speak normally to confirm a signal.","info");
+            setCheck("microphone","listening");
+          }
         }
         rafId=requestAnimationFrame(loop);
       };
       loop();
       $("#micStart").textContent="Restart microphone";
+      $("#micTest").disabled=false;
       await populateDevices();
-      const s=track?.getSettings?.()||{}; if(s.deviceId) $("#micSelect").value=s.deviceId;
+      const settings=track?.getSettings?.()||{}; if(settings.deviceId) $("#micSelect").value=settings.deviceId;
     }catch(err){
       state.mic.active=false;
       state.mic.permission = /denied|not allowed/i.test(err?.message||"") ? "denied" : "unavailable";
       setBox("#micState", `Microphone could not start: ${err?.message||err}`, "error");
       setCheck("microphone","fail");
+    }
+  }
+  async function runAudioQualityTest(){
+    if(!state.mic.active || !analyser){ setBox("#micState","Start the microphone before running the audio quality test.","warning"); return; }
+    const button=$("#micTest");
+    button.disabled=true; resetAudioQualityResult();
+    const quietFrames=[], speechFrames=[];
+    const started=performance.now();
+    setCheck("microphone","listening");
+    setBox("#micState","Stay quiet for 2 seconds while we measure the room…","info");
+    while(performance.now()-started < AUDIO_QUIET_MS + AUDIO_SPEECH_MS){
+      const elapsed=performance.now()-started;
+      const frame=readAudioFrame();
+      if(frame){
+        if(elapsed < AUDIO_QUIET_MS) quietFrames.push(frame);
+        else speechFrames.push(frame);
+        if(frame.peak>state.mic.peak) state.mic.peak=frame.peak;
+      }
+      if(elapsed>=AUDIO_QUIET_MS && elapsed<AUDIO_QUIET_MS+180){
+        setBox("#micState","Now speak normally for 6 seconds. Use the same voice and distance you plan to use on the webcast.","info");
+      }
+      await new Promise(resolve=>requestAnimationFrame(resolve));
+    }
+    const quietDb=quietFrames.map(f=>f.rmsDb).sort((a,b)=>a-b);
+    const noiseFloor=quietDb.length ? quietDb[Math.floor(quietDb.length*0.5)] : -100;
+    const voiceThreshold=Math.max(noiseFloor+6,-45);
+    const voiceFrames=speechFrames.filter(f=>f.rmsDb>=voiceThreshold);
+    const voiceRmsLinear = voiceFrames.length ? Math.sqrt(avg(voiceFrames.map(f=>f.rms*f.rms))) : 1e-5;
+    const speechRms=clampDb(dbfs(voiceRmsLinear));
+    const speechPeakLinear=voiceFrames.length ? Math.max(...voiceFrames.map(f=>f.peak)) : 1e-5;
+    const speechPeak=clampDb(dbfs(speechPeakLinear));
+    const snr=Math.max(-100,Math.min(160,speechRms-noiseFloor));
+    const consistency=voiceFrames.length ? stddev(voiceFrames.map(f=>f.rmsDb)) : 100;
+    const clipped=voiceFrames.reduce((sum,f)=>sum+f.clipped,0);
+    const samples=voiceFrames.reduce((sum,f)=>sum+f.samples,0);
+    const clippingRatio=samples ? clipped/samples : 0;
+    const voiceActivityRatio=speechFrames.length ? voiceFrames.length/speechFrames.length : 0;
+    Object.assign(state.mic, {
+      testCompleted:true,
+      testDuration:(performance.now()-started)/1000,
+      speechRmsDbfs:speechRms,
+      speechPeakDbfs:speechPeak,
+      noiseFloorDbfs:noiseFloor,
+      snrDb:snr,
+      clippingRatio,
+      consistencyDb:consistency,
+      voiceActivityRatio
+    });
+    if(voiceActivityRatio>=0.05) state.mic.signal=true;
+    $("#micMetrics").classList.remove("hidden");
+    $("#micSpeech").textContent=`${speechRms.toFixed(1)} dBFS RMS / ${speechPeak.toFixed(1)} peak`;
+    $("#micNoise").textContent=`${noiseFloor.toFixed(1)} dBFS`;
+    $("#micSnr").textContent=`${snr.toFixed(1)} dB`;
+    $("#micClip").textContent=`${(clippingRatio*100).toFixed(3)}%`;
+    button.textContent="Run audio quality test again"; button.disabled=false;
+    if(voiceActivityRatio<0.20){
+      setBox("#micState","Audio sample completed, but not enough normal speech was detected. Please run it again and speak throughout the 6-second speech portion.","warning");
+      setCheck("microphone","warn");
+    }else{
+      setBox("#micState","Audio quality sample completed and ready to submit.","success");
+      setCheck("microphone","pass");
     }
   }
 
@@ -408,6 +569,7 @@
 
   // ============ SPEED TEST ============
   async function runSpeedTest(){
+    state.metrics = { download:null, upload:null, latency:null, jitter:null, duration:0, complete:false, suspectJitter:false };
     $("#mDown").textContent="—"; $("#mUp").textContent="—"; $("#mLat").textContent="—"; $("#mJit").textContent="—";
     setCheck("internet","listening"); $("#progress").style.width="2%";
     $("#statusText").textContent="Loading the browser speed test…";
@@ -420,7 +582,15 @@
     return await new Promise((resolve,reject)=>{
       let changes=0, finished=false;
       const test = new SpeedTest({
-        autoStart:false, measureDownloadLoadedLatency:false, measureUploadLoadedLatency:false,
+        autoStart:false,
+        measureDownloadLoadedLatency:false,
+        measureUploadLoadedLatency:false,
+        // Prevent a stalled Cloudflare request from leaving the UI in
+        // "Testing and submitting..." forever. Slow connections below our
+        // readiness threshold may legitimately exceed one measurement timeout;
+        // Cloudflare skips that request and continues with the results collected.
+        abortRequestDuration:30000,
+        abortTestDuration:75000,
         measurements:[
           {type:"latency",numPackets:20},
           {type:"download",bytes:1e5,count:5,bypassMinDuration:true},
@@ -438,14 +608,30 @@
         $("#statusText").textContent="Measuring the connection. Keep this tab open…";
         const r=test.results;
         const dl=finiteOrNull(r.getDownloadBandwidth()), up=finiteOrNull(r.getUploadBandwidth()), la=finiteOrNull(r.getUnloadedLatency()), ji=finiteOrNull(r.getUnloadedJitter());
-        $("#mDown").textContent=fmtMbps(dl); $("#mUp").textContent=fmtMbps(up); $("#mLat").textContent=fmtMs(la); $("#mJit").textContent=fmtMs(ji);
+        $("#mDown").textContent=fmtMbps(dl); $("#mUp").textContent=fmtMbps(up); $("#mLat").textContent=fmtMs(la); $("#mJit").textContent="Measuring…";
       };
       test.onError = (e)=>{ if(finished) return; finished=true; reject(new Error(String(e))); };
       test.onFinish = (r)=>{
         if(finished) return; finished=true; $("#progress").style.width="100%";
         const dl=finiteOrNull(r.getDownloadBandwidth()), up=finiteOrNull(r.getUploadBandwidth()), la=finiteOrNull(r.getUnloadedLatency()), ji=finiteOrNull(r.getUnloadedJitter());
-        state.metrics = { download:dl, upload:up, latency:la, jitter:ji, duration:(performance.now()-t0)/1000 };
-        $("#mDown").textContent=fmtMbps(dl); $("#mUp").textContent=fmtMbps(up); $("#mLat").textContent=fmtMs(la); $("#mJit").textContent=fmtMs(ji);
+        const suspectJitter = (
+          ji != null && ji >= 1000 && la != null && la > 0 && ji > la * 10
+          && dl != null && dl >= 15_000_000
+          && up != null && up >= 8_000_000
+        );
+        state.metrics = {
+          download:dl, upload:up, latency:la, jitter:ji,
+          duration:(performance.now()-t0)/1000,
+          complete:!suspectJitter, suspectJitter
+        };
+        $("#mDown").textContent=fmtMbps(dl); $("#mUp").textContent=fmtMbps(up); $("#mLat").textContent=fmtMs(la);
+        $("#mJit").textContent=suspectJitter ? "Retest" : fmtMs(ji);
+        if(suspectJitter){
+          const error=new Error("The jitter reading was unstable and inconsistent with the rest of the connection. Please run the Internet test again.");
+          error.code="SUSPECT_JITTER";
+          reject(error);
+          return;
+        }
         resolve();
       };
       $("#statusText").textContent="Starting the Internet test…";
@@ -459,7 +645,9 @@
     if(!state.camera.active) problems.push("start the camera");
     if(!state.snapshot.dataUrl) problems.push("capture a camera snapshot");
     if(!state.mic.signal) problems.push("test the microphone until a signal is detected");
+    if(!state.mic.testCompleted) problems.push("run the guided audio quality test");
     if(!state.speaker.confirmed) problems.push("play and confirm the speaker test");
+    if(!state.metrics.complete) problems.push("run a successful Internet speed test");
     return problems;
   }
 
@@ -472,6 +660,11 @@
       phone_number: (fd.get("phone_number")||"").toString().trim(),
       presenter_title: (fd.get("presenter_title")||"").toString().trim(),
       location: (fd.get("location")||"").toString().trim(),
+      presenting_from_conference_room: (fd.get("presenting_from_conference_room")||"").toString(),
+      is_subscriber: (fd.get("is_subscriber")||"").toString(),
+      using_virtual_background: (fd.get("using_virtual_background")||"").toString(),
+      testing_on_intended: (fd.get("testing_on_intended")||"").toString(),
+      device_note: (fd.get("device_note")||"").toString().trim(),
       connection_type: (fd.get("connection_type")||"").toString(),
       notes: (fd.get("notes")||"").toString(),
       consent: !!fd.get("consent"),
@@ -486,6 +679,15 @@
       microphone_permission: state.mic.permission,
       microphone_signal_detected: !!state.mic.signal,
       microphone_peak_level: Number(state.mic.peak.toFixed(4)),
+      audio_test_completed: !!state.mic.testCompleted,
+      audio_test_duration_seconds: +state.mic.testDuration.toFixed(2),
+      microphone_speech_rms_dbfs: +state.mic.speechRmsDbfs.toFixed(2),
+      microphone_speech_peak_dbfs: +state.mic.speechPeakDbfs.toFixed(2),
+      microphone_noise_floor_dbfs: +state.mic.noiseFloorDbfs.toFixed(2),
+      microphone_snr_db: +state.mic.snrDb.toFixed(2),
+      microphone_clipping_ratio: +state.mic.clippingRatio.toFixed(6),
+      microphone_volume_consistency_db: +state.mic.consistencyDb.toFixed(2),
+      microphone_voice_activity_ratio: +state.mic.voiceActivityRatio.toFixed(4),
       speaker_confirmed: !!state.speaker.confirmed,
       snapshot_data_url: state.snapshot.dataUrl,
       snapshot_filename: state.snapshot.filename,
@@ -517,16 +719,50 @@
     const scores = r.scores && typeof r.scores==="object" ? r.scores : null;
     if (scores){
       $("#resScoresWrap").classList.remove("hidden");
-      $("#resScores").innerHTML = Object.entries(scores).map(([k,v])=>`<div class="flex justify-between"><span style="color:var(--muted)">${k}</span><span class="font-semibold">${v}</span></div>`).join("");
+      const headline=[["Internet",scores.internet],["Visual quality",scores.visual],["Audio",scores.audio]];
+      $("#resScores").innerHTML = headline.map(([k,v])=>`<div class="flex justify-between"><span style="color:var(--muted)">${k}</span><span class="font-semibold">${v ?? "—"}/100</span></div>`).join("");
     } else { $("#resScoresWrap").classList.add("hidden"); }
+    const visual = r.visual_details && typeof r.visual_details==="object" ? r.visual_details : null;
+    if(visual){
+      $("#resVisualWrap").classList.remove("hidden");
+      const resolution = (visual.camera_width && visual.camera_height)
+        ? `${visual.camera_width} × ${visual.camera_height}${visual.is_hd ? " · HD" : ""}`
+        : "Not detected";
+      const rows=[
+        ["Camera resolution",resolution],
+        ["Camera hardware",`${visual.camera_hardware_score ?? "—"}/100`],
+        ["Lighting",`${visual.lighting_score ?? "—"}/100`],
+        ["Sharpness",`${visual.sharpness_score ?? "—"}/100`],
+        ["Background",`${visual.background_score ?? "—"}/100`],
+        ["Framing (advisory)",`${visual.framing_score ?? "—"}/100`]
+      ];
+      $("#resVisual").innerHTML=rows.map(([k,v])=>`<div class="flex justify-between"><span style="color:var(--muted)">${k}</span><span class="font-semibold">${v}</span></div>`).join("");
+    }else{$("#resVisualWrap").classList.add("hidden");}
+    const audio = r.audio_details && typeof r.audio_details==="object" ? r.audio_details : null;
+    if(audio?.test_completed){
+      $("#resAudioWrap").classList.remove("hidden");
+      const c=audio.points||{};
+      const rows=[
+        ["Input level",`${c.input_level ?? "—"}/30`],
+        ["Noise / SNR",`${c.noise_snr ?? "—"}/25`],
+        ["Clipping",`${c.clipping ?? "—"}/20`],
+        ["Consistency",`${c.consistency ?? "—"}/15`],
+        ["Readiness",`${c.device_readiness ?? "—"}/10`],
+        ["SNR",audio.snr_db!=null?`${audio.snr_db} dB`:"—"],
+        ["Clipping",audio.clipping_percent!=null?`${audio.clipping_percent}%`:"—"]
+      ];
+      $("#resAudio").innerHTML=rows.map(([k,v])=>`<div class="flex justify-between"><span style="color:var(--muted)">${k}</span><span class="font-semibold">${v}</span></div>`).join("");
+    }else{$("#resAudioWrap").classList.add("hidden");}
     // apply server-provided per-check states if present
     if (r.checks && typeof r.checks==="object"){
       for (const [k,v] of Object.entries(r.checks)){
-        if (["camera","snapshot","microphone","speaker","internet"].includes(k) && ["pending","listening","pass","warn","fail"].includes(v)) setCheck(k,v);
+        if (!["camera","snapshot","microphone","speaker","internet"].includes(k)) continue;
+        if (typeof v === "boolean") setCheck(k, v ? "pass" : "fail");
+        else if (["pending","listening","pass","warn","fail"].includes(v)) setCheck(k,v);
       }
     }
-    if (r.trello_url){ const a=$("#resTrello"); a.href=r.trello_url; a.classList.remove("hidden"); } else { $("#resTrello").classList.add("hidden"); }
-    panel.scrollIntoView({behavior:"smooth", block:"nearest"});
+    $("#resTrello").classList.add("hidden");
+panel.scrollIntoView({behavior:"smooth", block:"nearest"});
   }
 
   // ============ WIRE UP ============
@@ -535,9 +771,36 @@
   $("#camRetake").addEventListener("click", retakeSnapshot);
   $("#camSelect").addEventListener("change", (e)=>{ if(e.target.value) startCamera(e.target.value); });
   $("#micStart").addEventListener("click", ()=> startMic($("#micSelect").value||undefined));
+  $("#micTest").addEventListener("click", runAudioQualityTest);
   $("#micSelect").addEventListener("change", (e)=>{ if(e.target.value) startMic(e.target.value); });
+  document.querySelectorAll('input[name="testing_on_intended"]').forEach(el=>el.addEventListener("change",()=>{
+    const no=document.querySelector('input[name="testing_on_intended"][value="no"]')?.checked;
+    $("#deviceNoteWrap").classList.toggle("hidden",!no);
+    $("#deviceNote").required=!!no;
+    if(!no) $("#deviceNote").value="";
+  }));
   $("#spkPlay").addEventListener("click", playSpeakerTest);
   $("#spkConfirm").addEventListener("click", confirmSpeaker);
+  $("#internetTest").addEventListener("click", async ()=>{
+    const btn=$("#internetTest");
+    btn.disabled=true;
+    btn.textContent="Testing Internet…";
+    try{
+      await runSpeedTest();
+      setCheck("internet","complete");
+      $("#statusText").textContent="Internet test complete. Review the results, then submit your readiness report when ready.";
+      $("#statusText").style.color="var(--success)";
+      btn.textContent="Run Internet test again";
+    }catch(err){
+      const suspect=err?.code==="SUSPECT_JITTER";
+      setCheck("internet",suspect?"warn":"fail");
+      $("#statusText").textContent=err?.message||"The Internet test could not be completed.";
+      $("#statusText").style.color=suspect?"var(--warning)":"var(--destructive)";
+      btn.textContent="Retry Internet test";
+    }finally{
+      btn.disabled=false;
+    }
+  });
 
   $("#readinessForm").addEventListener("submit", async (e)=>{
     e.preventDefault();
@@ -546,14 +809,12 @@
     if (!form.reportValidity()) return;
     const problems = validateHardware();
     if (problems.length){
-      $("#statusText").textContent = `Before running the readiness check, ${problems.join(", ")}.`;
+      $("#statusText").textContent = `Before submitting the readiness report, ${problems.join(", ")}.`;
       $("#statusText").style.color = "var(--warning)";
       return;
     }
-    const btn = $("#submitBtn"); btn.disabled = true; btn.textContent = "Testing and submitting…";
+    const btn = $("#submitBtn"); btn.disabled = true; btn.textContent = "Submitting…";
     try {
-      await runSpeedTest();
-      setCheck("internet","pass");
       $("#statusText").textContent = "Submitting readiness report…";
       $("#statusText").style.color = "var(--muted)";
       const payload = buildPayload(form);
@@ -570,12 +831,11 @@
       renderResult(data);
       $("#statusText").textContent = `Report submitted. Recommendation: ${data.recommendation || "received"}.`;
       $("#statusText").style.color = /ready|approved|pass/i.test(data.recommendation||"") ? "var(--success)" : "var(--warning)";
-      btn.textContent = "Run and submit again";
+      btn.textContent = "Submit again";
     } catch(err){
       $("#statusText").textContent = err?.message || "The readiness check could not be submitted.";
       $("#statusText").style.color = "var(--destructive)";
-      setCheck("internet","fail");
-      btn.textContent = "Try again";
+      btn.textContent = "Try submission again";
     } finally {
       btn.disabled = false;
     }

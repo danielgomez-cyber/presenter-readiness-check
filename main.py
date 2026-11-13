@@ -10,7 +10,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import cv2
 import google.auth
@@ -37,7 +37,7 @@ logger = logging.getLogger("presenter-readiness-check")
 
 app = FastAPI(
     title="Presenter Readiness Check",
-    version="3.0.0",
+    version="4.0.0",
 )
 
 
@@ -211,8 +211,24 @@ MIN_FRAMING_SCORE = env_float("MIN_FRAMING_SCORE", 60.0)
 MIN_BLUR_SCORE = env_float("MIN_BLUR_SCORE", 50.0)
 MIN_BACKGROUND_SCORE = env_float("MIN_BACKGROUND_SCORE", 45.0)
 MIN_OVERALL_SCORE = env_float("MIN_OVERALL_SCORE", 75.0)
+MIN_AUDIO_SCORE = env_float("MIN_AUDIO_SCORE", 70.0)
 
-# Target band for the microphone's peak level, in dBFS. Standard guidance
+# Long-term headline readiness model. These weights intentionally sum to 1.0.
+# Camera hardware remains a diagnostic/pass check; Visual Score is the quality
+# metric used in Overall.
+OVERALL_INTERNET_WEIGHT = env_float("OVERALL_INTERNET_WEIGHT", 0.35)
+OVERALL_VISUAL_WEIGHT = env_float("OVERALL_VISUAL_WEIGHT", 0.30)
+OVERALL_AUDIO_WEIGHT = env_float("OVERALL_AUDIO_WEIGHT", 0.35)
+
+# Safe rollout switch. Leave false while an older frontend is still in use.
+# Once the frontend sends the v4 audio sample on every submission, set
+# REQUIRE_AUDIO_TEST=true so a skipped/failed audio sample forces review.
+REQUIRE_AUDIO_TEST = os.getenv(
+    "REQUIRE_AUDIO_TEST",
+    "false",
+).strip().lower() in {"1", "true", "yes", "on"}
+
+# Target band for the legacy microphone peak field, in dBFS. Standard guidance
 # is an average speaking level of -18 to -12 dBFS with peaks landing
 # around -6 dBFS; since the browser only reports a single peak reading
 # (see static/index.html's state.mic.peak), that peak is flagged directly
@@ -337,6 +353,24 @@ HEADERS = [
     "Filming Test Booked",
     "Filming Test Date",
     "Presenting From Conference Room",
+
+    # Audio-quality v4 fields are appended to preserve every historical column.
+    "Audio Test Completed",
+    "Audio Test Duration Seconds",
+    "Speech RMS dBFS",
+    "Speech Peak dBFS",
+    "Noise Floor dBFS",
+    "SNR dB",
+    "Clipping Ratio",
+    "Volume Consistency dB",
+    "Voice Activity Ratio",
+    "Input Level Points (30)",
+    "Noise/SNR Points (25)",
+    "Clipping Points (20)",
+    "Consistency Points (15)",
+    "Device Readiness Points (10)",
+    "Audio Quality Score",
+    "Audio Quality Grade",
 ]
 
 
@@ -486,6 +520,58 @@ class ReadinessSubmission(BaseModel):
     microphone_signal_detected: bool = False
 
     microphone_peak_level: float = Field(
+        default=0,
+        ge=0,
+        le=1,
+    )
+
+    # Audio-quality v4 measurements captured by the browser during a short
+    # guided sample. Defaults keep older frontend payloads valid during rollout.
+    audio_test_completed: bool = False
+
+    audio_test_duration_seconds: float = Field(
+        default=0,
+        ge=0,
+        le=60,
+    )
+
+    microphone_speech_rms_dbfs: float = Field(
+        default=-100,
+        ge=-160,
+        le=0,
+    )
+
+    microphone_speech_peak_dbfs: float = Field(
+        default=-100,
+        ge=-160,
+        le=0,
+    )
+
+    microphone_noise_floor_dbfs: float = Field(
+        default=-100,
+        ge=-160,
+        le=0,
+    )
+
+    microphone_snr_db: float = Field(
+        default=0,
+        ge=-100,
+        le=160,
+    )
+
+    microphone_clipping_ratio: float = Field(
+        default=0,
+        ge=0,
+        le=1,
+    )
+
+    microphone_volume_consistency_db: float = Field(
+        default=100,
+        ge=0,
+        le=160,
+    )
+
+    microphone_voice_activity_ratio: float = Field(
         default=0,
         ge=0,
         le=1,
@@ -687,6 +773,23 @@ def score_grade(score: float) -> str:
 
     if score >= 70:
         return "Fair"
+
+    if score >= 60:
+        return "Needs Improvement"
+
+    return "Poor"
+
+
+def audio_quality_grade(score: float) -> str:
+    """Presenter-facing audio grade used by the v4 quality model."""
+    if score >= 90:
+        return "Excellent"
+
+    if score >= 80:
+        return "Good"
+
+    if score >= 70:
+        return "Acceptable"
 
     if score >= 60:
         return "Needs Improvement"
@@ -1614,6 +1717,22 @@ def jitter_score(value: float) -> float:
     )
 
 
+def jitter_measurement_suspect(
+    payload: ReadinessSubmission,
+) -> bool:
+    """Flag extreme jitter values that are inconsistent with the rest of
+    an otherwise usable connection. These should be retested rather than
+    treated as a literal multi-second jitter measurement.
+    """
+    return (
+        payload.jitter_ms >= 1000
+        and payload.latency_ms > 0
+        and payload.jitter_ms > payload.latency_ms * 10
+        and payload.download_mbps >= MIN_DOWNLOAD_MBPS
+        and payload.upload_mbps >= MIN_UPLOAD_MBPS
+    )
+
+
 def calculate_internet_metrics(
     payload: ReadinessSubmission,
 ) -> dict[str, Any]:
@@ -1629,16 +1748,30 @@ def calculate_internet_metrics(
         payload.latency_ms
     )
 
-    jitter_result = jitter_score(
-        payload.jitter_ms
-    )
+    jitter_suspect = jitter_measurement_suspect(payload)
 
-    internet_result = clamp(
-        download_result * 0.25
-        + upload_result * 0.40
-        + latency_result * 0.20
-        + jitter_result * 0.15
-    )
+    if jitter_suspect:
+        jitter_result = None
+        # Do not let a clearly unstable measurement artificially tank the
+        # Internet score. Re-normalize the other three measurements instead.
+        internet_result = clamp(
+            (
+                download_result * 0.25
+                + upload_result * 0.40
+                + latency_result * 0.20
+            )
+            / 0.85
+        )
+    else:
+        jitter_result = jitter_score(
+            payload.jitter_ms
+        )
+        internet_result = clamp(
+            download_result * 0.25
+            + upload_result * 0.40
+            + latency_result * 0.20
+            + jitter_result * 0.15
+        )
 
     return {
         "download_score": download_result,
@@ -1657,9 +1790,12 @@ def calculate_internet_metrics(
         ),
 
         "jitter_score": jitter_result,
-        "jitter_grade": score_grade(
-            jitter_result
+        "jitter_grade": (
+            "Retest"
+            if jitter_suspect
+            else score_grade(float(jitter_result))
         ),
+        "jitter_measurement_suspect": jitter_suspect,
 
         "internet_score": internet_result,
         "internet_grade": score_grade(
@@ -1687,14 +1823,14 @@ def calculate_camera_score(
         * payload.camera_height
     )
 
-    if pixel_count >= 1920 * 1080:
+    # HD is the meaningful production threshold here. 720p and above receive
+    # full resolution credit; 540p remains usable but is clearly differentiated.
+    if pixel_count >= 1280 * 720:
         resolution_score = 100.0
-    elif pixel_count >= 1280 * 720:
-        resolution_score = 90.0
     elif pixel_count >= 960 * 540:
-        resolution_score = 75.0
+        resolution_score = 70.0
     elif pixel_count > 0:
-        resolution_score = 45.0
+        resolution_score = 40.0
     else:
         resolution_score = 0.0
 
@@ -1709,26 +1845,23 @@ def calculate_camera_score(
     else:
         fps_score = 0.0
 
-    # Until a snapshot is supplied, do not punish the camera score
-    # for missing visual analysis.
-    if visual["analysis_error"]:
-        sharpness_score = 70.0
-    else:
-        sharpness_score = float(
-            visual["blur_score"]
-        )
-
+    # Camera Score is intentionally hardware-centric. Snapshot qualities
+    # such as lighting and sharpness are scored separately in Visual Score.
     return clamp(
-        resolution_score * 0.40
+        resolution_score * 0.65
         + fps_score * 0.25
-        + sharpness_score * 0.25
         + 10
     )
 
 
-def calculate_microphone_score(
+def calculate_legacy_microphone_score(
     payload: ReadinessSubmission,
 ) -> float:
+    """Compatibility score for submissions from the old frontend.
+
+    It is intentionally retained only so a staggered deployment does not break
+    active presenter checks. New submissions should use Audio Quality v4 below.
+    """
     if payload.microphone_permission != "granted":
         return 0.0
 
@@ -1754,6 +1887,133 @@ def calculate_microphone_score(
     )
 
 
+def calculate_audio_quality_metrics(
+    payload: ReadinessSubmission,
+) -> dict[str, Any]:
+    """Return the agreed 100-point measured audio-quality model.
+
+    30 points: input level
+    25 points: background noise / SNR
+    20 points: clipping / distortion risk
+    15 points: volume consistency
+    10 points: device/readiness
+
+    Microphone brand/type never earns bonus quality points.
+    """
+    if not payload.audio_test_completed:
+        legacy = calculate_legacy_microphone_score(payload)
+        return {
+            "available": False,
+            "input_level_points": 0.0,
+            "noise_points": 0.0,
+            "clipping_points": 0.0,
+            "consistency_points": 0.0,
+            "device_points": 0.0,
+            "audio_quality_score": legacy,
+            "audio_quality_grade": "Not measured",
+        }
+
+    # 1) Input level -- 30 points. This follows the agreed presenter-facing
+    # target band for the speech peak. Clipping is scored separately below.
+    peak = payload.microphone_speech_peak_dbfs
+    if -18 <= peak <= -6:
+        input_level_points = 30.0
+    elif -24 <= peak < -18 or -6 < peak <= -3:
+        input_level_points = 25.0
+    elif -30 <= peak < -24 or -3 < peak < 0:
+        input_level_points = 15.0
+    elif peak < -30:
+        input_level_points = 5.0
+    else:
+        input_level_points = 0.0
+
+    # 2) Background noise / SNR -- 25 points.
+    snr = payload.microphone_snr_db
+    if snr >= 30:
+        noise_points = 25.0
+    elif snr >= 25:
+        noise_points = 22.0
+    elif snr >= 20:
+        noise_points = 18.0
+    elif snr >= 15:
+        noise_points = 12.0
+    elif snr >= 10:
+        noise_points = 6.0
+    else:
+        noise_points = 0.0
+
+    # 3) Clipping/distortion risk -- 20 points. Ratio is the share of speech
+    # samples at/near full scale during the guided test.
+    clipping = payload.microphone_clipping_ratio
+    if clipping <= 0.001:
+        clipping_points = 20.0
+    elif clipping <= 0.005:
+        clipping_points = 17.0
+    elif clipping <= 0.02:
+        clipping_points = 10.0
+    elif clipping <= 0.05:
+        clipping_points = 5.0
+    else:
+        clipping_points = 0.0
+
+    # 4) Volume consistency -- 15 points. Value is the standard deviation of
+    # short-window speech RMS levels in dB. Lower variation is better.
+    consistency = payload.microphone_volume_consistency_db
+    if consistency <= 3:
+        consistency_points = 15.0
+    elif consistency <= 5:
+        consistency_points = 12.0
+    elif consistency <= 8:
+        consistency_points = 8.0
+    elif consistency <= 12:
+        consistency_points = 4.0
+    else:
+        consistency_points = 0.0
+
+    # 5) Device/readiness -- 10 points. Hardware brand does not matter.
+    device_points = 0.0
+    if payload.microphone_permission == "granted":
+        device_points += 3.0
+    if payload.microphone_signal_detected:
+        device_points += 3.0
+    if payload.microphone_device:
+        device_points += 2.0
+    if payload.audio_test_completed:
+        device_points += 1.0
+    if payload.microphone_voice_activity_ratio >= 0.20:
+        device_points += 1.0
+
+    total = clamp(
+        input_level_points
+        + noise_points
+        + clipping_points
+        + consistency_points
+        + device_points
+    )
+
+    return {
+        "available": True,
+        "input_level_points": input_level_points,
+        "noise_points": noise_points,
+        "clipping_points": clipping_points,
+        "consistency_points": consistency_points,
+        "device_points": device_points,
+        "audio_quality_score": total,
+        "audio_quality_grade": audio_quality_grade(total),
+    }
+
+
+def calculate_microphone_score(
+    payload: ReadinessSubmission,
+) -> float:
+    """Compatibility name used by existing Sheet/Trello/response code."""
+    return float(
+        calculate_audio_quality_metrics(payload)[
+            "audio_quality_score"
+        ]
+    )
+
+
 # =============================================================================
 # Readiness assessment
 # =============================================================================
@@ -1763,6 +2023,9 @@ def assess_submission(
     visual: dict[str, Any],
 ) -> dict[str, Any]:
     internet = calculate_internet_metrics(
+        payload
+    )
+    audio = calculate_audio_quality_metrics(
         payload
     )
 
@@ -1798,7 +2061,11 @@ def assess_submission(
             f"{MAX_LATENCY_MS:.0f} ms"
         )
 
-    if payload.jitter_ms > MAX_JITTER_MS:
+    if bool(internet["jitter_measurement_suspect"]):
+        internet_issues.append(
+            "The jitter measurement was unstable and should be retested"
+        )
+    elif payload.jitter_ms > MAX_JITTER_MS:
         internet_issues.append(
             f"Jitter is {payload.jitter_ms:.0f} ms; "
             f"it should be no higher than "
@@ -1858,6 +2125,8 @@ def assess_submission(
             "No microphone signal was detected"
         )
 
+    # Keep the original peak calculation for legacy submissions and existing
+    # reporting fields. New v4 submissions are judged from the guided sample.
     mic_peak_db = microphone_peak_dbfs(
         payload.microphone_peak_level
     )
@@ -1865,9 +2134,56 @@ def assess_submission(
         MIC_PEAK_MIN_DBFS <= mic_peak_db <= MIC_PEAK_MAX_DBFS
     )
 
-    # Only flag the level itself if a signal was actually detected --
-    # otherwise this would just duplicate the "no signal" issue above.
-    if payload.microphone_signal_detected and not mic_peak_in_range:
+    if payload.audio_test_completed:
+        if float(audio["audio_quality_score"]) < MIN_AUDIO_SCORE:
+            microphone_issues.append(
+                f"Audio quality score is "
+                f"{float(audio['audio_quality_score']):.0f}/100; "
+                f"at least {MIN_AUDIO_SCORE:.0f}/100 is required"
+            )
+
+        if payload.microphone_voice_activity_ratio < 0.20:
+            microphone_issues.append(
+                "Not enough speech was detected during the audio sample"
+            )
+
+        if payload.microphone_speech_peak_dbfs < -24:
+            microphone_issues.append(
+                f"Speech peak is {payload.microphone_speech_peak_dbfs:.1f} dBFS "
+                "and is too quiet"
+            )
+        elif payload.microphone_speech_peak_dbfs > -3:
+            microphone_issues.append(
+                f"Speech peak is {payload.microphone_speech_peak_dbfs:.1f} dBFS "
+                "and is too loud"
+            )
+
+        if payload.microphone_snr_db < 20:
+            microphone_issues.append(
+                f"Signal-to-noise ratio is {payload.microphone_snr_db:.1f} dB; "
+                "background noise is too high"
+            )
+
+        if payload.microphone_clipping_ratio > 0.005:
+            microphone_issues.append(
+                f"Clipping was detected on "
+                f"{payload.microphone_clipping_ratio * 100:.2f}% of speech samples"
+            )
+
+        if payload.microphone_volume_consistency_db > 8:
+            microphone_issues.append(
+                f"Speaking level varied by "
+                f"{payload.microphone_volume_consistency_db:.1f} dB"
+            )
+
+    elif REQUIRE_AUDIO_TEST:
+        microphone_issues.append(
+            "The guided audio-quality test was not completed"
+        )
+
+    # During a staged frontend rollout, preserve the current peak-based check
+    # for older payloads instead of rejecting every active presenter test.
+    elif payload.microphone_signal_detected and not mic_peak_in_range:
         mic_peak_display = (
             "-inf"
             if mic_peak_db == float("-inf")
@@ -1906,35 +2222,9 @@ def assess_submission(
                 str(visual["analysis_error"])
             )
         else:
-            if not visual["face_detected"]:
-                visual_issues.append(
-                    "No face was detected in the camera snapshot"
-                )
-
-            if visual["multiple_faces"]:
-                visual_issues.append(
-                    "Multiple faces were detected"
-                )
-
-            if not visual["face_centered"]:
-                visual_issues.append(
-                    "The presenter is not centered in the frame"
-                )
-
-            if visual["face_too_close"]:
-                visual_issues.append(
-                    "The presenter appears too close to the camera"
-                )
-
-            if visual["face_too_far"]:
-                visual_issues.append(
-                    "The presenter appears too far from the camera"
-                )
-
-            if not visual["headroom_acceptable"]:
-                visual_issues.append(
-                    "The amount of headroom should be adjusted"
-                )
+            # Framing/face-position metrics are retained for producer context,
+            # but they are advisory rather than readiness blockers. Presenters
+            # can easily adjust centering, distance, and headroom during a test.
 
             if visual["lighting_score"] < MIN_LIGHTING_SCORE:
                 visual_issues.append(
@@ -1949,11 +2239,6 @@ def assess_submission(
             if visual["blur_detected"]:
                 visual_issues.append(
                     "The camera image appears blurry"
-                )
-
-            if visual["background_clutter_detected"]:
-                visual_issues.append(
-                    "The background may be visually distracting"
                 )
 
             if visual["glasses_glare_warning"]:
@@ -1988,7 +2273,12 @@ def assess_submission(
             "Disable VPN software and move closer to the router."
         )
 
-    if payload.jitter_ms > MAX_JITTER_MS:
+    if bool(internet["jitter_measurement_suspect"]):
+        fixes.append(
+            "Run the Internet test again — the jitter reading was inconsistent "
+            "with the rest of the connection."
+        )
+    elif payload.jitter_ms > MAX_JITTER_MS:
         fixes.append(
             "Use Ethernet and ask other users to reduce network activity."
         )
@@ -2016,7 +2306,40 @@ def assess_submission(
             "Select the intended microphone and speak closer to it."
         )
 
-    if payload.microphone_signal_detected and not mic_peak_in_range:
+    if payload.audio_test_completed:
+        if payload.microphone_speech_peak_dbfs < -24:
+            fixes.append(
+                "Increase microphone gain or move closer to the mic — "
+                "the measured speaking level is too quiet."
+            )
+        elif payload.microphone_speech_peak_dbfs > -3:
+            fixes.append(
+                "Reduce microphone gain or move back from the mic — "
+                "the measured speaking level is too loud."
+            )
+
+        if payload.microphone_snr_db < 20:
+            fixes.append(
+                "Reduce room noise, move closer to the microphone, or use a "
+                "more directional microphone."
+            )
+
+        if payload.microphone_clipping_ratio > 0.005:
+            fixes.append(
+                "Lower microphone/input gain to prevent clipping and distortion."
+            )
+
+        if payload.microphone_volume_consistency_db > 8:
+            fixes.append(
+                "Keep a consistent distance from the microphone while speaking."
+            )
+
+        if payload.microphone_voice_activity_ratio < 0.20:
+            fixes.append(
+                "Repeat the audio sample and speak continuously at a normal volume."
+            )
+
+    elif payload.microphone_signal_detected and not mic_peak_in_range:
         if mic_peak_db < MIC_PEAK_MIN_DBFS:
             fixes.append(
                 "Increase microphone gain or move closer to the mic — "
@@ -2042,26 +2365,6 @@ def assess_submission(
         if visual["lighting_score"] < MIN_LIGHTING_SCORE:
             fixes.append(
                 "Add a soft light in front of you at face level."
-            )
-
-        if visual["face_too_close"]:
-            fixes.append(
-                "Move the camera farther away."
-            )
-
-        if visual["face_too_far"]:
-            fixes.append(
-                "Move closer to the camera."
-            )
-
-        if not visual["face_centered"]:
-            fixes.append(
-                "Center yourself horizontally in the camera frame."
-            )
-
-        if not visual["headroom_acceptable"]:
-            fixes.append(
-                "Adjust the camera so there is a small amount of space above your head."
             )
 
         if visual["blur_detected"]:
@@ -2094,8 +2397,10 @@ def assess_submission(
 
     if snapshot_was_supplied:
         visual_pass = (
-            not visual_issues
-            and bool(visual["visual_pass"])
+            not visual["analysis_error"]
+            and float(visual["lighting_score"]) >= MIN_LIGHTING_SCORE
+            and float(visual["blur_score"]) >= MIN_BLUR_SCORE
+            and not bool(visual["backlighting_detected"])
         )
     else:
         # Phase 1 can still run before index.html adds snapshots.
@@ -2106,8 +2411,8 @@ def assess_submission(
         visual,
     )
 
-    microphone_result = calculate_microphone_score(
-        payload
+    microphone_result = float(
+        audio["audio_quality_score"]
     )
 
     speaker_result = (
@@ -2116,10 +2421,9 @@ def assess_submission(
         else 0.0
     )
 
-    audio_result = clamp(
-        microphone_result * 0.70
-        + speaker_result * 0.30
-    )
+    # Audio Score is now microphone/audio QUALITY only. Speaker playback is a
+    # required pass/fail check, not 30% of the quality number.
+    audio_result = microphone_result
 
     if snapshot_was_supplied and not visual["analysis_error"]:
         lighting_result = float(
@@ -2133,20 +2437,41 @@ def assess_submission(
         environment_result = float(
             visual["environment_score"]
         )
+        visual_result = clamp(
+            camera_result * 0.35
+            + lighting_result * 0.30
+            + float(visual["blur_score"]) * 0.20
+            + float(visual["background_score"]) * 0.10
+            + framing_result * 0.05
+        )
     else:
-        # Neutral values until the frontend sends a snapshot.
+        # Preserve compatibility if a snapshot cannot be analyzed. Camera Score
+        # is used only as a fallback until Visual Score is available again.
         lighting_result = 75.0
         framing_result = 75.0
         environment_result = 75.0
+        visual_result = camera_result
 
-    overall_score = clamp(
-        float(internet["internet_score"]) * 0.25
-        + camera_result * 0.20
-        + audio_result * 0.20
-        + lighting_result * 0.15
-        + framing_result * 0.10
-        + environment_result * 0.10
-    )
+    if payload.audio_test_completed:
+        overall_score = clamp(
+            float(internet["internet_score"]) * OVERALL_INTERNET_WEIGHT
+            + visual_result * OVERALL_VISUAL_WEIGHT
+            + audio_result * OVERALL_AUDIO_WEIGHT
+        )
+    else:
+        # Staged-deployment fallback: old frontend payloads retain the previous
+        # formula until the guided audio sampler is live.
+        overall_score = clamp(
+            float(internet["internet_score"]) * 0.25
+            + camera_result * 0.20
+            + (
+                microphone_result * 0.70
+                + speaker_result * 0.30
+            ) * 0.20
+            + lighting_result * 0.15
+            + framing_result * 0.10
+            + environment_result * 0.10
+        )
 
     all_issues = [
         *internet_issues,
@@ -2172,8 +2497,8 @@ def assess_submission(
 
         if snapshot_was_supplied:
             recommendation_detail = (
-                "Internet, camera, microphone, speaker, "
-                "lighting, framing, and environment checks passed."
+                "Internet, camera, microphone, speaker, lighting, "
+                "and image-quality checks passed."
             )
         else:
             recommendation_detail = (
@@ -2203,12 +2528,20 @@ def assess_submission(
         "microphone_score": microphone_result,
         "speaker_score": speaker_result,
         "audio_score": audio_result,
+        "audio_quality_available": bool(audio["available"]),
+        "audio_quality_grade": audio["audio_quality_grade"],
+        "input_level_points": float(audio["input_level_points"]),
+        "noise_points": float(audio["noise_points"]),
+        "clipping_points": float(audio["clipping_points"]),
+        "consistency_points": float(audio["consistency_points"]),
+        "device_points": float(audio["device_points"]),
 
         "internet_pass": internet_pass,
         "camera_pass": camera_pass,
         "microphone_pass": microphone_pass,
         "speaker_pass": speaker_pass,
         "visual_pass": visual_pass,
+        "visual_score": visual_result,
 
         "microphone_peak_db": mic_peak_db,
         "microphone_peak_in_range": mic_peak_in_range,
@@ -2389,7 +2722,7 @@ def append_sheet_row(
             2,
         ),
         round(
-            float(visual["visual_score"]),
+            float(assessment["visual_score"]),
             2,
         ),
         assessment["visual_pass"],
@@ -2445,6 +2778,80 @@ def append_sheet_row(
             else ""
         ),
         payload.presenting_from_conference_room,
+
+        # Appended Audio Quality v4 measurements.
+        payload.audio_test_completed,
+        round(payload.audio_test_duration_seconds, 2),
+        (
+            round(payload.microphone_speech_rms_dbfs, 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_speech_peak_dbfs, 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_noise_floor_dbfs, 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_snr_db, 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_clipping_ratio, 6)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_volume_consistency_db, 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(payload.microphone_voice_activity_ratio, 4)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["input_level_points"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["noise_points"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["clipping_points"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["consistency_points"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["device_points"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            round(float(assessment["audio_score"]), 2)
+            if payload.audio_test_completed
+            else ""
+        ),
+        (
+            assessment["audio_quality_grade"]
+            if payload.audio_test_completed
+            else ""
+        ),
     ]
 
     response = (
@@ -3038,7 +3445,7 @@ def trello_description(
         ),
         (
             f"{status_icon(assessment['camera_pass'])} "
-            f"Camera — "
+            f"Camera hardware — "
             f"{float(assessment['camera_score']):.0f}/100"
         ),
         (
@@ -3058,8 +3465,8 @@ def trello_description(
             [
                 (
                     f"{status_icon(assessment['visual_pass'])} "
-                    f"Visual assessment — "
-                    f"{float(visual['visual_score']):.0f}/100"
+                    f"Visual quality — "
+                    f"{float(assessment['visual_score']):.0f}/100"
                 ),
                 (
                     f"{status_icon(float(visual['lighting_score']) >= MIN_LIGHTING_SCORE)} "
@@ -3067,8 +3474,7 @@ def trello_description(
                     f"{float(visual['lighting_score']):.0f}/100"
                 ),
                 (
-                    f"{status_icon(float(visual['framing_score']) >= MIN_FRAMING_SCORE)} "
-                    f"Framing — "
+                    f"ℹ️ Framing (advisory) — "
                     f"{float(visual['framing_score']):.0f}/100"
                 ),
                 (
@@ -3160,11 +3566,43 @@ def trello_description(
                 f"{yes_no(payload.microphone_signal_detected)}"
             ),
             (
-                f"{status_icon(bool(assessment['microphone_peak_in_range']))} "
-                f"**Peak level:** "
-                f"{peak_level_dbfs(payload.microphone_peak_level)} "
-                f"(target: {MIC_PEAK_MIN_DBFS:.0f} to "
-                f"{MIC_PEAK_MAX_DBFS:.0f} dBFS)"
+                f"**Audio quality:** "
+                f"{float(assessment['audio_score']):.0f}/100 "
+                f"({assessment['audio_quality_grade']})"
+                if payload.audio_test_completed
+                else "**Audio quality:** Legacy microphone check only"
+            ),
+            (
+                f"**Speech level:** "
+                f"{payload.microphone_speech_rms_dbfs:.1f} dBFS RMS; "
+                f"{payload.microphone_speech_peak_dbfs:.1f} dBFS peak"
+                if payload.audio_test_completed
+                else (
+                    f"{status_icon(bool(assessment['microphone_peak_in_range']))} "
+                    f"**Legacy peak level:** "
+                    f"{peak_level_dbfs(payload.microphone_peak_level)} "
+                    f"(target: {MIC_PEAK_MIN_DBFS:.0f} to "
+                    f"{MIC_PEAK_MAX_DBFS:.0f} dBFS)"
+                )
+            ),
+            (
+                f"**Noise floor / SNR:** "
+                f"{payload.microphone_noise_floor_dbfs:.1f} dBFS / "
+                f"{payload.microphone_snr_db:.1f} dB"
+                if payload.audio_test_completed
+                else "**Noise floor / SNR:** Not measured"
+            ),
+            (
+                f"**Clipping:** "
+                f"{payload.microphone_clipping_ratio * 100:.3f}%"
+                if payload.audio_test_completed
+                else "**Clipping:** Not measured"
+            ),
+            (
+                f"**Volume consistency:** "
+                f"{payload.microphone_volume_consistency_db:.1f} dB"
+                if payload.audio_test_completed
+                else "**Volume consistency:** Not measured"
             ),
             (
                 f"**Speaker playback confirmed:** "
@@ -3676,6 +4114,12 @@ def record_submission(
                 ),
                 1,
             ),
+            "sharpness": round(
+                float(
+                    visual["blur_score"]
+                ),
+                1,
+            ),
             "environment": round(
                 float(
                     visual["environment_score"]
@@ -3684,10 +4128,27 @@ def record_submission(
             ),
             "visual": round(
                 float(
-                    visual["visual_score"]
+                    assessment["visual_score"]
                 ),
                 1,
             ),
+        },
+
+        "visual_details": {
+            "camera_width": payload.camera_width,
+            "camera_height": payload.camera_height,
+            "camera_fps": round(float(payload.camera_fps), 1),
+            "is_hd": (
+                payload.camera_width >= 1280
+                and payload.camera_height >= 720
+            ),
+            "camera_hardware_score": round(
+                float(assessment["camera_score"]), 1
+            ),
+            "lighting_score": round(float(visual["lighting_score"]), 1),
+            "sharpness_score": round(float(visual["blur_score"]), 1),
+            "background_score": round(float(visual["background_score"]), 1),
+            "framing_score": round(float(visual["framing_score"]), 1),
         },
 
         "internet_grades": {
@@ -3752,6 +4213,53 @@ def record_submission(
                 if payload.snapshot_data_url
                 else None
             ),
+        },
+
+        "audio_details": {
+            "test_completed": payload.audio_test_completed,
+            "grade": assessment["audio_quality_grade"],
+            "speech_rms_dbfs": (
+                round(payload.microphone_speech_rms_dbfs, 1)
+                if payload.audio_test_completed
+                else None
+            ),
+            "speech_peak_dbfs": (
+                round(payload.microphone_speech_peak_dbfs, 1)
+                if payload.audio_test_completed
+                else None
+            ),
+            "noise_floor_dbfs": (
+                round(payload.microphone_noise_floor_dbfs, 1)
+                if payload.audio_test_completed
+                else None
+            ),
+            "snr_db": (
+                round(payload.microphone_snr_db, 1)
+                if payload.audio_test_completed
+                else None
+            ),
+            "clipping_percent": (
+                round(payload.microphone_clipping_ratio * 100, 3)
+                if payload.audio_test_completed
+                else None
+            ),
+            "volume_consistency_db": (
+                round(payload.microphone_volume_consistency_db, 1)
+                if payload.audio_test_completed
+                else None
+            ),
+            "voice_activity_ratio": (
+                round(payload.microphone_voice_activity_ratio, 3)
+                if payload.audio_test_completed
+                else None
+            ),
+            "points": {
+                "input_level": round(float(assessment["input_level_points"]), 1),
+                "noise_snr": round(float(assessment["noise_points"]), 1),
+                "clipping": round(float(assessment["clipping_points"]), 1),
+                "consistency": round(float(assessment["consistency_points"]), 1),
+                "device_readiness": round(float(assessment["device_points"]), 1),
+            },
         },
 
         "visual_analysis": {
