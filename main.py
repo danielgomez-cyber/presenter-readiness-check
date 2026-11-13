@@ -192,6 +192,30 @@ TRELLO_LIST_ID = os.getenv(
 # either one can jump straight to the other.
 TRELLO_PROGRAMS_BOARD_ID = os.getenv("TRELLO_PROGRAMS_BOARD_ID", "").strip()
 
+# Readiness-board routing list names. These defaults match the production
+# Trello board. They can be overridden without changing code if a list is
+# renamed later. Cards are created directly in the matching list.
+TRELLO_POSSIBLE_WIFI_LIST_NAME = os.getenv(
+    "TRELLO_POSSIBLE_WIFI_LIST_NAME",
+    "Possible WIFI Issues",
+).strip()
+TRELLO_AV_WIFI_LIST_NAME = os.getenv(
+    "TRELLO_AV_WIFI_LIST_NAME",
+    "AV Issues and Wifi Issues",
+).strip()
+TRELLO_AV_LIST_NAME = os.getenv(
+    "TRELLO_AV_LIST_NAME",
+    "AV Issues",
+).strip()
+TRELLO_ETHERNET_LIST_NAME = os.getenv(
+    "TRELLO_ETHERNET_LIST_NAME",
+    "Ethernet",
+).strip()
+TRELLO_WIFI_ISSUES_LIST_NAME = os.getenv(
+    "TRELLO_WIFI_ISSUES_LIST_NAME",
+    "Wifi Issues",
+).strip()
+
 
 # =============================================================================
 # Readiness thresholds
@@ -2927,14 +2951,138 @@ def update_integration_result(
 # Trello helpers
 # =============================================================================
 
-def trello_list_id_for_result(
-    recommendation: str,
-) -> str:
-    if recommendation == "Ready":
-        return (
-            TRELLO_READY_LIST_ID
-            or TRELLO_LIST_ID
+_TRELLO_READINESS_LIST_CACHE: dict[str, str] | None = None
+
+
+def normalize_trello_list_name(value: str) -> str:
+    """Normalize a Trello list name for safe case-insensitive matching."""
+    return re.sub(r"\s+", " ", value.strip()).casefold()
+
+
+def get_readiness_board_lists() -> dict[str, str]:
+    """Return open readiness-board lists keyed by normalized list name.
+
+    The lookup is cached for the life of the FastAPI process because the
+    readiness-board column structure changes rarely. If the Trello API lookup
+    fails, callers fall back to the existing Ready / Needs Review list IDs.
+    """
+    global _TRELLO_READINESS_LIST_CACHE
+
+    if _TRELLO_READINESS_LIST_CACHE is not None:
+        return _TRELLO_READINESS_LIST_CACHE
+
+    if not (TRELLO_KEY and TRELLO_TOKEN and TRELLO_BOARD_ID):
+        _TRELLO_READINESS_LIST_CACHE = {}
+        return _TRELLO_READINESS_LIST_CACHE
+
+    try:
+        response = requests.get(
+            f"https://api.trello.com/1/boards/{TRELLO_BOARD_ID}/lists",
+            params={
+                "key": TRELLO_KEY,
+                "token": TRELLO_TOKEN,
+                "filter": "open",
+                "fields": "name",
+            },
+            headers={"Accept": "application/json"},
+            timeout=25,
         )
+    except requests.RequestException as exc:
+        logger.warning(
+            "Trello readiness-list lookup failed (%s)",
+            exc.__class__.__name__,
+        )
+        return {}
+
+    if not response.ok:
+        logger.warning(
+            "Trello readiness-list lookup failed: %s",
+            trello_error_message(response, "Trello list lookup"),
+        )
+        return {}
+
+    try:
+        lists = response.json()
+    except ValueError:
+        logger.warning("Trello readiness-list lookup returned invalid JSON")
+        return {}
+
+    resolved: dict[str, str] = {}
+    for item in lists:
+        name = str(item.get("name", "")).strip()
+        list_id = str(item.get("id", "")).strip()
+        if name and list_id:
+            resolved[normalize_trello_list_name(name)] = list_id
+
+    _TRELLO_READINESS_LIST_CACHE = resolved
+    return resolved
+
+
+def trello_category_for_submission(
+    payload: ReadinessSubmission,
+    assessment: dict[str, Any],
+) -> str:
+    """Choose the production Trello column for a readiness submission.
+
+    Framing is not part of this routing decision. AV means a real camera,
+    microphone, speaker, or visual-quality failure. A Wi-Fi issue means the
+    presenter is on a wireless connection and the Internet check failed.
+    """
+    connection_type = payload.connection_type.strip()
+    wireless = connection_type in {"Wi-Fi", "Hotspot"}
+    ethernet = connection_type == "Ethernet"
+
+    internet_issue = not bool(assessment["internet_pass"])
+    av_issue = not all(
+        [
+            bool(assessment["camera_pass"]),
+            bool(assessment["microphone_pass"]),
+            bool(assessment["speaker_pass"]),
+            bool(assessment["visual_pass"]),
+        ]
+    )
+
+    if wireless and internet_issue and av_issue:
+        return TRELLO_AV_WIFI_LIST_NAME
+
+    if av_issue:
+        return TRELLO_AV_LIST_NAME
+
+    if wireless and internet_issue:
+        return TRELLO_WIFI_ISSUES_LIST_NAME
+
+    if ethernet:
+        return TRELLO_ETHERNET_LIST_NAME
+
+    if wireless:
+        return TRELLO_POSSIBLE_WIFI_LIST_NAME
+
+    return ""
+
+
+def trello_list_id_for_result(
+    payload: ReadinessSubmission,
+    assessment: dict[str, Any],
+) -> str:
+    category = trello_category_for_submission(payload, assessment)
+
+    if category:
+        lists_by_name = get_readiness_board_lists()
+        category_id = lists_by_name.get(
+            normalize_trello_list_name(category),
+            "",
+        )
+        if category_id:
+            return category_id
+
+        logger.warning(
+            "Trello routing list %r was not found; using legacy fallback",
+            category,
+        )
+
+    recommendation = str(assessment["recommendation"])
+    if recommendation == "Ready":
+        return TRELLO_READY_LIST_ID or TRELLO_LIST_ID
 
     return (
         TRELLO_REVIEW_LIST_ID
@@ -2945,7 +3093,8 @@ def trello_list_id_for_result(
 
 def trello_is_configured() -> bool:
     list_available = bool(
-        TRELLO_READY_LIST_ID
+        TRELLO_BOARD_ID
+        or TRELLO_READY_LIST_ID
         or TRELLO_REVIEW_LIST_ID
         or TRELLO_LIST_ID
     )
@@ -3649,7 +3798,8 @@ def create_trello_card(
     booking_lookup_ok: bool = True,
 ) -> tuple[str, str]:
     list_id = trello_list_id_for_result(
-        str(assessment["recommendation"])
+        payload,
+        assessment,
     )
 
     if not list_id:
